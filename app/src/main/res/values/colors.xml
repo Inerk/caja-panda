@@ -1,4 +1,5 @@
 <resources>
-    <color name="bg">#0A0C19</color>
-    <color name="icon_bg">#4F46E5</color>
+    <color name="bg">#EDF3FC</color>
+    <color name="navy">#0B2F7A</color>
+    <color name="icon_bg">#1557B0</color>
 </resources>
