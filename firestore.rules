@@ -1,0 +1,74 @@
+rules_version = '2';
+// Reglas de seguridad de Caja Panda.
+// Se pegan en Firebase → Firestore → Reglas → Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signed() { return request.auth != null; }
+    function duenoDoc() { return /databases/$(database)/documents/sistema/dueno; }
+    function esPropietario() { return signed() && exists(duenoDoc()) && get(duenoDoc()).data.uid == request.auth.uid; }
+    function miDoc() { return /databases/$(database)/documents/usuarios/$(request.auth.uid); }
+    function rol() { return (signed() && exists(miDoc())) ? get(miDoc()).data.rol : 'ninguno'; }
+    function esDueno() { return esPropietario() || rol() == 'dueno'; }
+    function esCajero() { return rol() == 'cajero' || esDueno(); }
+    function esAlmacen() { return rol() == 'almacen' || esDueno(); }
+    function activo() { return esCajero() || esAlmacen(); }
+    function soyYo(campo) { return request.resource.data[campo] == request.auth.uid; }
+
+    // Quién es el dueño: lo reclama la primera cuenta y ya no se puede cambiar.
+    match /sistema/dueno {
+      allow read: if signed();
+      allow create: if signed() && soyYo('uid');
+    }
+
+    match /usuarios/{uid} {
+      allow read: if signed();
+      allow create: if signed() && uid == request.auth.uid &&
+        (request.resource.data.rol == 'pendiente' || (request.resource.data.rol == 'dueno' && esPropietario()));
+      allow update: if esDueno() ||
+        (uid == request.auth.uid && request.resource.data.rol == resource.data.rol);
+      allow delete: if esDueno();
+    }
+
+    match /config/{doc} {
+      allow read: if signed();
+      allow write: if esDueno();
+    }
+
+    match /productos/{id} {
+      allow read: if activo();
+      allow create, delete: if esAlmacen();
+      // el cajero solo puede descontar o regresar existencia
+      allow update: if esAlmacen() ||
+        (esCajero() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'actualizado']));
+    }
+
+    match /movimientos/{id} {
+      allow read: if activo();
+      allow create: if activo();
+    }
+
+    match /ventas/{id} {
+      allow read: if esDueno() || (esCajero() && resource.data.uid == request.auth.uid);
+      allow create: if esCajero() && soyYo('uid');
+      allow update: if esDueno();
+    }
+
+    match /clientes/{id} {
+      allow read, create: if esCajero();
+      allow update, delete: if esDueno();
+    }
+
+    match /cuenta_movs/{id} {
+      allow read: if esCajero();
+      allow create: if esCajero() && soyYo('uid');
+    }
+
+    match /turnos/{id} {
+      allow read: if esDueno() || (esCajero() && resource.data.uid == request.auth.uid);
+      allow create: if esCajero() && soyYo('uid');
+      allow update: if esDueno() ||
+        (esCajero() && resource.data.uid == request.auth.uid && resource.data.estado == 'abierto');
+    }
+  }
+}
