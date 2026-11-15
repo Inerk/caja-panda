@@ -26,7 +26,7 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > app/caja.keystore; fi
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | tr -d " \r\n" | base64 -d > app/caja.keystore; fi
           test -f app/caja.keystore || { echo "Falta la llave de firma (secreto KEYSTORE_B64)"; exit 1; }
       - name: Compilar
         env:

@@ -4,7 +4,7 @@ plugins {
 }
 
 val runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
-val ksPass = System.getenv("KEYSTORE_PASS")?.takeIf { it.isNotBlank() } ?: "cajapanda"
+val ksPass = System.getenv("KEYSTORE_PASS")?.trim()?.takeIf { it.isNotBlank() } ?: "cajapanda"
 
 android {
     namespace = "com.tony.cajapanda"
