@@ -449,6 +449,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <div class="row spread">
       <h2>Inventario</h2>
       <div class="row" data-need="inv_editar">
+        <button class="btn" id="btnImport">Importar lista</button>
         <button class="btn" id="btnEntrada">Entrada de mercancía</button>
         <button class="btn primary" id="btnNuevo">Nuevo producto</button>
       </div>
@@ -457,6 +458,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <div class="toolbar">
       <input type="search" id="invSearch" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
       <button class="chip" id="chipLow" aria-pressed="false">Stock bajo</button>
+      <button class="chip" id="chipSinPrecio" aria-pressed="false">Sin precio</button>
       <button class="btn" id="btnInvCsv" data-need="costos">Exportar CSV</button>
     </div>
     <div class="tbl"><table>
@@ -635,6 +637,15 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
 <dialog id="dlgConfirm"><div class="dlg">
   <h2 id="cfTitle">¿Seguro?</h2><p id="cfText"></p>
   <footer><button class="btn" id="cfNo">No</button><button class="btn danger" id="cfYes">Sí</button></footer>
+</div></dialog>
+
+<dialog id="dlgImport"><div class="dlg">
+  <header><h2>Importar lista de productos</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <p class="muted">Elige un archivo CSV o pega la lista. Una línea por producto, en este orden: <span class="num">nombre, categoría, existencia, precio, costo, código</span>. Solo el nombre es obligatorio.</p>
+  <label class="btn" for="impFile">Elegir archivo CSV</label><input type="file" id="impFile" accept=".csv,text/csv,text/plain,*/*" hidden>
+  <div class="field"><label class="label" for="impText">O pega la lista aquí</label><textarea id="impText" rows="6" placeholder="Zote blanco 400 g, Jabones, 4, 28"></textarea></div>
+  <div class="banner ok" id="impInfo" hidden style="margin:0"></div>
+  <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="impGo" disabled>Importar</button></footer>
 </div></dialog>
 
 <dialog id="dlgPrinter"><div class="dlg">
@@ -1156,6 +1167,7 @@ $('#turnosBody').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(!tr)ret
 function renderInv(){
   const q=$('#invSearch').value;let list=q?search(q,10000):S.productos;
   if(S.lowOnly) list=list.filter(p=>(+p.stock||0)<=minOf(p));
+  if(S.sinPrecio) list=list.filter(p=>!(+p.precio>0));
   const showCost=can('costos'),cols=showCost?5:4;
   const body=$('#invBody');
   if(!S.productos.length) body.innerHTML=`<tr><td colspan="${cols}"><div class="empty" style="border:0">Sin productos todavía.${can('inv_editar')?' Usa <b>Nuevo producto</b> y escanea el código en el campo correspondiente.':''}</div></td></tr>`;
@@ -1227,6 +1239,35 @@ function renderMovs(){
   const lab={entrada:'Entrada',ajuste:'Ajuste',alta:'Alta',baja:'Baja',cancelacion:'Cancelación'};
   $('#movList').innerHTML=S.movs.length?S.movs.map(m=>`<div><span><b>${esc(lab[m.tipo]||m.tipo)}</b> · ${esc(m.nombre)}${m.nota?` <span class="muted">· ${esc(m.nota)}</span>`:''}<br><span class="muted" style="font-size:12px">${fechaCorta(m.ts)} · ${esc(nombreDe(m.uid))}</span></span><span class="num" style="white-space:nowrap">${m.cant>0?'+':''}${m.cant} → ${m.despues}</span></div>`).join(''):'<div class="muted">Aquí aparecerán entradas, ajustes y cancelaciones.</div>';
 }
+
+/* ---------- Importar lista de productos ---------- */
+function parseCsv(t){const rows=[];let row=[],cur='',q=false;t=t.replace(/^﻿/,'').replace(/\r/g,'');
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;else if(c===','||c===';'||c==='\t'){row.push(cur);cur=''}else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur=''}else cur+=c}
+  row.push(cur);rows.push(row);return rows.map(r=>r.map(x=>x.trim())).filter(r=>r.some(x=>x))}
+function leerLista(t){const rows=parseCsv(t);if(!rows.length)return[];
+  let idx={nombre:0,categoria:1,stock:2,precio:3,costo:4,codigo:5};
+  const h=rows[0].map(norm);
+  if(h.some(x=>x.startsWith('nombre')||x.startsWith('producto'))){rows.shift();const f=(...k)=>h.findIndex(x=>k.some(w=>x.startsWith(w)));
+    idx={nombre:f('nombre','producto'),categoria:f('categ'),stock:f('exist','stock','cant'),precio:f('precio'),costo:f('costo'),codigo:f('cod')}}
+  const num=v=>{const n=parseFloat(String(v||'').replace(/[$\s]/g,''));return isNaN(n)?0:n};const g=(r,i)=>i>=0?(r[i]||''):'';
+  return rows.map(r=>({nombre:g(r,idx.nombre),categoria:g(r,idx.categoria),stock:Math.round(num(g(r,idx.stock))),precio:r2(num(g(r,idx.precio))),costo:r2(num(g(r,idx.costo))),codigo:g(r,idx.codigo)})).filter(x=>x.nombre)}
+let impRows=[];
+function impPreview(){const all=leerLista($('#impText').value);const names=new Set(S.productos.map(p=>norm(p.nombre)));const codes=new Set(S.productos.map(p=>String(p.codigo||'')).filter(Boolean));const seen=new Set();
+  impRows=all.filter(x=>{const k=norm(x.nombre);if(names.has(k)||seen.has(k)||(x.codigo&&codes.has(x.codigo)))return false;seen.add(k);return true});
+  const rep=all.length-impRows.length,sp=impRows.filter(x=>!(x.precio>0)).length;
+  $('#impInfo').hidden=!all.length;$('#impInfo').textContent=`${impRows.length} producto${impRows.length===1?'':'s'} para agregar`+(rep?` · ${rep} ya existen y se omiten`:'')+(sp?` · ${sp} sin precio`:'');
+  $('#impGo').disabled=!impRows.length;$('#impGo').textContent='Importar'}
+$('#btnImport').onclick=()=>{$('#impText').value='';impRows=[];impPreview();open('#dlgImport')};
+$('#impText').oninput=impPreview;
+$('#impFile').onchange=async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;try{$('#impText').value=await f.text();impPreview()}catch(ex){toast('No se pudo leer el archivo')}};
+$('#impGo').onclick=async()=>{if(!can('inv_editar')||S.busy||!impRows.length)return;S.busy=true;const b=$('#impGo');b.disabled=true;let ok=0,fail=0;const now=Date.now();
+  for(const x of impRows){b.textContent=`Guardando ${ok+fail+1} de ${impRows.length}…`;
+    try{const id=Store.newId('productos');await Store.set('productos/'+id,{nombre:x.nombre,codigo:x.codigo,precio:x.precio,costo:x.costo,stock:x.stock,minimo:S.cfg.stockMin,categoria:x.categoria,actualizado:now,creado:now});
+      if(x.stock)logMov({tipo:'alta',pid:id,nombre:x.nombre,cant:x.stock,antes:0,despues:x.stock,nota:'Importado de lista'});ok++}catch(ex){fail++}}
+  S.busy=false;close('#dlgImport');toast(`${ok} productos agregados`+(fail?` · ${fail} fallaron`:''))};
+$('#chipSinPrecio').onclick=()=>{S.sinPrecio=!S.sinPrecio;$('#chipSinPrecio').setAttribute('aria-pressed',String(!!S.sinPrecio));renderInv()};
 
 /* ---------- Ventas (dueño) ---------- */
 function renderVentas(){

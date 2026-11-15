@@ -5,12 +5,14 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -39,6 +41,12 @@ class MainActivity : ComponentActivity() {
 
     private val btPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         js(if (ok) "window.__nativePermOk&&window.__nativePermOk()" else "window.__nativePermNo&&window.__nativePermNo()")
+    }
+
+    private var fileCb: ValueCallback<Array<Uri>>? = null
+    private val pickFile = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        fileCb?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        fileCb = null
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -70,7 +78,23 @@ class MainActivity : ComponentActivity() {
                 return true
             }
         }
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                view: WebView,
+                callback: ValueCallback<Array<Uri>>,
+                params: FileChooserParams
+            ): Boolean {
+                fileCb?.onReceiveValue(null)
+                fileCb = callback
+                return try {
+                    pickFile.launch("*/*")
+                    true
+                } catch (e: Exception) {
+                    fileCb = null
+                    false
+                }
+            }
+        }
         web.addJavascriptInterface(Bridge(), "CajaNative")
         setContentView(web)
         web.loadUrl("https://$HOST/assets/www/index.html")
