@@ -589,7 +589,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <header><h2 id="prodTitle">Nuevo producto</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div class="form">
     <div class="field full"><label class="label" for="pNombre">Nombre</label><input id="pNombre" required maxlength="60"></div>
-    <div class="field full"><label class="label" for="pCodigo">Código de barras (escanéalo aquí)</label><div class="row" style="flex-wrap:nowrap"><input id="pCodigo" class="num" maxlength="40" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn" data-nscan="pCodigo" hidden>Escanear</button></div><button type="button" class="btn ghost" id="pGenCode" style="justify-self:start">Generar código QR propio</button></div>
+    <div class="field full"><label class="label" for="pCodigo">Código de barras (escanéalo aquí)</label><div class="row" style="flex-wrap:nowrap"><input id="pCodigo" class="num" maxlength="40" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn" data-nscan="pCodigo" hidden>Escanear</button></div><div class="row"><button type="button" class="btn ghost" id="pLookup">Buscar datos en internet</button><button type="button" class="btn ghost" id="pGenCode">Generar código QR propio</button></div></div>
     <div class="field"><label class="label" for="pPrecio">Precio de venta</label><input id="pPrecio" type="number" min="0" step="0.01" required inputmode="decimal"></div>
     <div class="field"><label class="label" for="pCosto">Costo</label><input id="pCosto" type="number" min="0" step="0.01" inputmode="decimal"></div>
     <div class="field"><label class="label" for="pStock">Existencia</label><input id="pStock" type="number" step="1" inputmode="numeric"></div>
@@ -602,6 +602,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <label class="check full" for="pRapido"><input type="checkbox" id="pRapido"> Mostrar en <b>Venta rápida</b> (cuadrito en la pantalla de Vender)</label>
     <label class="check full" for="pSuelto"><input type="checkbox" id="pSuelto"> Se vende por <b>piezas sueltas</b>: al escanear, preguntar cuántas piezas</label>
   </div>
+  <div class="banner ok" id="prodInfo" hidden style="margin:0"></div>
   <div class="banner bad" id="prodErr" hidden style="margin:0"></div>
   <footer><button type="button" class="btn danger" id="btnBorrar" hidden>Borrar</button><button type="button" class="btn" id="btnEtiqueta" hidden>Etiqueta QR</button><span style="flex:1"></span><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Guardar</button></footer>
 </form></dialog>
@@ -873,7 +874,7 @@ let prodFoto='';
 function setProdFoto(f){prodFoto=f||'';$('#pFotoPrev').hidden=!prodFoto;$('#pFotoNone').hidden=!!prodFoto;$('#pFotoDel').hidden=!prodFoto;if(prodFoto)$('#pFotoPrev').src=prodFoto}
 function thumbFrom(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{const S2=200,c=document.createElement('canvas');c.width=c.height=S2;const m=Math.min(im.width,im.height);
   const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,S2,S2);x.drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,S2,S2);
-  let d=c.toDataURL('image/webp',0.72);if(!d.startsWith('data:image/webp'))d=c.toDataURL('image/jpeg',0.72);res(d)};im.onerror=()=>rej(new Error('img'));im.src=src})}
+  let d=c.toDataURL('image/webp',0.72);if(!d.startsWith('data:image/webp'))d=c.toDataURL('image/jpeg',0.72);res(d)};im.onerror=()=>rej(new Error('img'));if(/^https?:/.test(src))im.crossOrigin='anonymous';im.src=src})}
 $('#pFotoFile').onchange=async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;const u=URL.createObjectURL(f);try{setProdFoto(await thumbFrom(u))}catch(ex){toast('No se pudo leer esa imagen')}finally{URL.revokeObjectURL(u)}};
 $('#pFotoDel').onclick=()=>setProdFoto('');
 window.__nativePhoto=async d=>{try{setProdFoto(await thumbFrom(d))}catch(e){toast('No se pudo usar la foto')}};
@@ -893,6 +894,28 @@ function drawLabel(p){const w=S.cfg.ancho==='80'?576:384,c=$('#ticketCanvas'),x=
 $('#btnEtiqueta').onclick=()=>{const p=editing&&S.byId.get(editing.id);if(!p||!p.codigo){toast('Guarda el producto con su código primero');return}
   if(typeof qrcode!=='function'){toast('El generador de QR no está disponible aquí');return}
   close('#dlgProd');showTicket(async()=>{try{await document.fonts.load('800 30px Nunito')}catch(e){}drawLabel(p)},{title:'Etiqueta QR',file:'etiqueta-'+String(p.nombre).replace(/\W+/g,'-'),nueva:false})};
+/* Buscar un código de barras en las bases abiertas (Open Food / Beauty / Products Facts) */
+async function fetchJson(u,ms=7000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);try{const r=await fetch(u,{signal:c.signal});if(!r.ok)return null;return await r.json()}catch(e){return null}finally{clearTimeout(t)}}
+async function buscarProductoOnline(code){
+  const f='fields=product_name,product_name_es,generic_name_es,brands,quantity,image_front_small_url,image_small_url';
+  const res=await Promise.all(['world.openfoodfacts.org','world.openbeautyfacts.org','world.openproductsfacts.org'].map(h=>fetchJson(`https://${h}/api/v2/product/${code}.json?${f}`)));
+  for(const j of res){const p=j&&(j.status===1||j.status==='success')&&j.product;if(!p)continue;
+    const base=String(p.product_name_es||p.product_name||p.generic_name_es||'').trim(),marca=String(p.brands||'').split(',')[0].trim();if(!base&&!marca)continue;
+    let nombre=base||marca;if(base&&marca&&!norm(nombre).includes(norm(marca)))nombre=marca+' '+nombre;
+    const q=String(p.quantity||'').trim();if(q&&!norm(nombre).replace(/\s/g,'').includes(norm(q).replace(/\s/g,'')))nombre+=' '+q;
+    return{nombre:nombre.slice(0,60),img:p.image_front_small_url||p.image_small_url||''}}
+  return null}
+let lookSeq=0;
+async function autollenar(code,manual){const info=$('#prodInfo');
+  if(!/^\d{8,14}$/.test(code)){if(manual)toast('Escanea o escribe primero el código de barras del producto');return}
+  const my=++lookSeq;info.className='banner warn';info.textContent='Buscando el producto en internet…';info.hidden=false;
+  const r=await buscarProductoOnline(code);if(my!==lookSeq||!$('#dlgProd').open||$('#pCodigo').value.trim()!==code)return;
+  if(!r){info.textContent=navigator.onLine===false?'Sin internet: captura los datos a mano.':'No encontré este código en la base de productos. Captura los datos a mano.';return}
+  if(manual||!$('#pNombre').value.trim())$('#pNombre').value=r.nombre;
+  if(r.img&&!prodFoto){try{const t=await thumbFrom(r.img);if(my===lookSeq&&!prodFoto)setProdFoto(t)}catch(e){}}
+  info.className='banner ok';info.textContent='Datos encontrados en internet. Revisa el nombre y la foto, corrige lo que no esté bien y pon el precio.';
+  if(!$('#pPrecio').value)$('#pPrecio').focus()}
+$('#pLookup').onclick=()=>autollenar($('#pCodigo').value.trim(),true);
 let qtyP=null;
 function askQty(p){qtyP=p;$('#qtyName').textContent=p.nombre;$('#qtyPrice').textContent=money(p.precio)+' c/u · hay '+(+p.stock||0);
   $('#qtyFoto').hidden=!okFoto(p.foto);if(okFoto(p.foto))$('#qtyFoto').src=p.foto;
@@ -1281,7 +1304,7 @@ function openProd(p,pre={}){
   $('#pNombre').value=p?.nombre||'';$('#pCodigo').value=p?.codigo||pre.codigo||'';$('#pPrecio').value=p?.precio??'';
   $('#pCosto').value=p?.costo??'';$('#pStock').value=p?.stock??0;$('#pMin').value=p?.minimo??S.cfg.stockMin;$('#pCat').value=p?.categoria||'';
   $('#pRapido').checked=!!(p&&p.rapido);$('#pSuelto').checked=!!(p&&p.suelto);setProdFoto(p&&okFoto(p.foto)?p.foto:'');$('#btnEtiqueta').hidden=!p||!p.codigo;
-  $('#btnBorrar').hidden=!p||!can('cancelar');$('#prodErr').hidden=true;open('#dlgProd');setTimeout(()=>$('#pNombre').focus(),60);
+  $('#btnBorrar').hidden=!p||!can('cancelar');$('#prodErr').hidden=true;$('#prodInfo').hidden=true;lookSeq++;open('#dlgProd');if(!p&&pre.codigo)autollenar(String(pre.codigo),false);setTimeout(()=>$('#pNombre').focus(),60);
 }
 $('#pCodigo').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pPrecio').focus()}});
 $('#prodForm').addEventListener('submit',async e=>{
@@ -1510,7 +1533,7 @@ $('#menuPrinter').onclick=()=>{renderPrinterDlg();open('#dlgPrinter');if(prn.get
 $('#menuUpdate').onclick=()=>{try{CajaNative.checkUpdate()}catch(e){}};
 
 window.__nativeScan=code=>{code=String(code||'').trim();if(!code)return;
-  if($('#dlgProd').open){$('#pCodigo').value=code;return}
+  if($('#dlgProd').open){$('#pCodigo').value=code;if(!editing&&!$('#pNombre').value.trim())autollenar(code,false);return}
   if($('#dlgEntrada').open){const i=$('#eCodigo');i.value=code;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return}
   if(!can('vender'))return;showTab('vender');$('#scanInput').value=code;handleScan(code)};
 window.__nativeScanErr=msg=>{if(!/cancel/i.test(msg))toast('No se pudo abrir el escáner: '+msg)};
