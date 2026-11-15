@@ -10,8 +10,8 @@ service cloud.firestore {
     function miDoc() { return /databases/$(database)/documents/usuarios/$(request.auth.uid); }
     function rol() { return (signed() && exists(miDoc())) ? get(miDoc()).data.rol : 'ninguno'; }
     function esDueno() { return esPropietario() || rol() == 'dueno'; }
-    function esCajero() { return rol() == 'cajero' || esDueno(); }
-    function esAlmacen() { return rol() == 'almacen' || esDueno(); }
+    function esCajero() { return rol() == 'cajero' || rol() == 'encargado' || esDueno(); }
+    function esAlmacen() { return rol() == 'almacen' || rol() == 'encargado' || esDueno(); }
     function activo() { return esCajero() || esAlmacen(); }
     function soyYo(campo) { return request.resource.data[campo] == request.auth.uid; }
 
@@ -28,6 +28,13 @@ service cloud.firestore {
       allow update: if esDueno() ||
         (uid == request.auth.uid && request.resource.data.rol == resource.data.rol);
       allow delete: if esDueno();
+    }
+
+    // PIN de caja (solo su huella): lo lee y escribe su dueña; el dueño del negocio solo puede borrarlo.
+    match /pins/{uid} {
+      allow read: if signed() && (uid == request.auth.uid || esDueno());
+      allow create, update: if signed() && uid == request.auth.uid;
+      allow delete: if signed() && (uid == request.auth.uid || esDueno());
     }
 
     match /config/{doc} {

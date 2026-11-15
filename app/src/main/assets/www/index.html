@@ -298,6 +298,20 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
 .qtygrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
 .qtygrid button{padding:14px 0;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--accent);font-weight:900;font-size:18px;cursor:pointer}
 
+.lockgrid{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+.lockgrid button{border:1px solid var(--line);background:#fff;border-radius:22px;padding:16px 14px;width:140px;cursor:pointer;display:grid;justify-items:center;gap:8px;box-shadow:0 4px 14px rgba(14,42,94,.08)}
+.lockgrid button:hover{border-color:var(--accent)}
+.lockgrid img{width:84px;height:84px;border-radius:50%}
+.lockgrid b{font-size:17px;color:var(--fg);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lockgrid span{font-size:13px;color:var(--muted)}
+.pindots{display:flex;gap:14px;justify-content:center}
+.pindots i{width:18px;height:18px;border-radius:50%;border:2px solid var(--line2);background:#fff}
+.pindots i.on{background:var(--accent);border-color:var(--accent)}
+.pinpad{display:grid;grid-template-columns:repeat(3,76px);gap:10px;justify-content:center}
+.pinpad button{height:64px;border-radius:18px;border:1px solid var(--line);background:#fff;font-size:26px;font-weight:900;color:var(--fg);cursor:pointer}
+.pinpad button:active{background:var(--bg)}
+.pinpad button.alt{font-size:15px;color:var(--muted);font-weight:800}
+
 /* Tablet y computadora: caja registradora en dos columnas */
 @media (min-width:900px){
   main{padding-block:12px 40px}
@@ -341,6 +355,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <button id="menuPrinter" hidden>Impresora de tickets</button>
     <button id="menuRespaldo" data-need="ajustes">Descargar respaldo completo</button>
     <button id="menuUpdate" hidden>Buscar actualizaciones</button>
+    <button id="menuLock" hidden>Bloquear / cambiar de usuario</button>
     <button id="menuLogout" hidden>Cerrar sesión</button>
   </div>
 </header>
@@ -348,6 +363,13 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
 <div class="wrap"><div id="banner" class="banner warn" hidden></div></div>
 
 <main class="wrap">
+  <section class="view gate" id="v-lock" hidden>
+    <h2>¿Quién va a usar la caja?</h2>
+    <p class="muted">Toca tu foto y escribe tu PIN.</p>
+    <div class="lockgrid" id="lockGrid"></div>
+    <button class="btn" id="lockAdd" style="justify-self:center">Agregar otra cuenta</button>
+  </section>
+
   <section class="view gate" id="v-login" hidden>
     <div class="panel" style="display:grid;gap:14px;text-align:left">
       <h2 id="lgTitle">Entrar a la caja</h2>
@@ -358,7 +380,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
         <div class="banner bad" id="lgErr" hidden style="margin:0"></div>
         <button class="btn primary big" type="submit" id="lgBtn">Entrar</button>
       </form>
-      <div class="row spread"><button class="btn ghost" id="lgToggle" type="button">Crear cuenta nueva</button><button class="btn ghost" id="lgReset" type="button">Olvidé mi contraseña</button></div>
+      <div class="row spread"><button class="btn ghost" id="lgBack" type="button" hidden>← Regresar</button><button class="btn ghost" id="lgToggle" type="button">Crear cuenta nueva</button><button class="btn ghost" id="lgReset" type="button">Olvidé mi contraseña</button></div>
     </div>
   </section>
 
@@ -549,6 +571,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <header><h2 id="perfilTitle">Tu perfil</h2><img class="av big" id="perfilPrev" src="img/av12.webp" alt=""></header>
   <p class="muted">Tu nombre y tu avatar aparecen en los tickets, los cortes de caja y la lista de usuarios.</p>
   <div class="field"><label class="label" for="miNombre">Nombre</label><input id="miNombre" required maxlength="30" autocomplete="name"></div>
+  <div class="row spread" id="pinRow" hidden><span><b>PIN de caja</b><br><span class="muted" id="pinState" style="font-size:13px"></span></span><button type="button" class="btn" id="pinSet">Crear PIN</button></div>
   <div class="field"><span class="label">Elige tu avatar</span><div class="avgrid" id="avGrid" role="radiogroup" aria-label="Avatar"></div></div>
   <footer><button type="submit" class="btn primary">Guardar</button></footer>
 </form></dialog>
@@ -678,6 +701,15 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <footer><button class="btn" id="cfNo">No</button><button class="btn danger" id="cfYes">Sí</button></footer>
 </div></dialog>
 
+<dialog id="dlgPin"><div class="dlg" style="justify-items:center;text-align:center">
+  <img class="av big" id="pinAv" src="img/av12.webp" alt="">
+  <h2 id="pinTitle">Escribe tu PIN</h2>
+  <p class="muted" id="pinSub"></p>
+  <div class="pindots" id="pinDots"><i></i><i></i><i></i><i></i></div>
+  <div class="banner bad" id="pinErr" hidden style="margin:0"></div>
+  <div class="pinpad" id="pinPad"></div>
+</div></dialog>
+
 <dialog id="dlgQty"><form class="dlg" id="qtyForm">
   <header><div style="display:flex;gap:12px;align-items:center;min-width:0"><img id="qtyFoto" class="pfoto" alt="" hidden><div style="min-width:0"><h2 id="qtyName">Producto</h2><div class="muted num" id="qtyPrice"></div></div></div><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div class="field"><label class="label" for="qtyN">¿Cuántas piezas?</label><input id="qtyN" class="moneyin" type="number" inputmode="numeric" min="1" step="1" value="1" required></div>
@@ -753,6 +785,7 @@ const ROLES = {
   dueno:{label:'Dueño',p:['vender','fiado','turno','inventario','inv_editar','costos','ventas','cancelar','ajustes']},
   cajero:{label:'Cajero',p:['vender','fiado','turno','inventario']},
   almacen:{label:'Inventario',p:['inventario','inv_editar','costos']},
+  encargado:{label:'Encargada',p:['vender','fiado','turno','inventario','inv_editar','costos']},
   pendiente:{label:'Pendiente',p:[]}
 };
 
@@ -1219,7 +1252,7 @@ function renderTurno(){
 }
 const avSrc=u=>`img/av${Math.min(12,Math.max(1,+(u&&u.avatar)||12))}.webp`;
 function brandHtml(n){const w=String(n||'').trim().split(/\s+/).filter(Boolean);if(w.length<2)return esc(w[0]||'Caja');const last=w.pop();return `${esc(w.join(' '))} <em>${esc(last)}</em>`}
-function applyWho(){const me=S.me;if(!me)return;$('#whoLine').innerHTML=`<img class="av" src="${avSrc(me)}" alt=""><span>${esc(me.nombre)} · ${esc((ROLES[me.rol]||ROLES.pendiente).label)}</span>`;
+function applyWho(){const me=S.me;if(!me)return;if(FB)slots.upsert({uid:S.uid,nombre:me.nombre,avatar:me.avatar||12,rol:me.rol});$('#whoLine').innerHTML=`<img class="av" src="${avSrc(me)}" alt=""><span>${esc(me.nombre)} · ${esc((ROLES[me.rol]||ROLES.pendiente).label)}</span>`;
   $$('#menu [data-need]').forEach(el=>el.hidden=!can(el.dataset.need));renderTurnCard()}
 function renderTurnCard(){const t=S.turno;const c=$('#turnCard');if(!c)return;
   c.classList.toggle('on',!!t);
@@ -1232,7 +1265,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('#menu')&&!e.target.c
 function setAv(n){S.avSel=n;$('#perfilPrev').src=`img/av${n}.webp`;$$('#avGrid button').forEach(b=>b.setAttribute('aria-checked',String(+b.dataset.av===n)))}
 $('#avGrid').innerHTML=Array.from({length:12},(_,i)=>`<button type="button" role="radio" aria-checked="false" data-av="${i+1}" aria-label="Avatar ${i+1}"><img src="img/av${i+1}.webp" alt="" loading="lazy"></button>`).join('');
 $('#avGrid').onclick=e=>{const b=e.target.closest('button[data-av]');if(b)setAv(+b.dataset.av)};
-function openPerfil(){$('#perfilTitle').textContent=S.me?'Tu perfil':'¿Cómo te llamas?';$('#miNombre').value=(S.me&&S.me.nombre)||'';setAv(+(S.me&&S.me.avatar)||12);open('#dlgNombre')}
+function openPerfil(){renderPinRow();$('#perfilTitle').textContent=S.me?'Tu perfil':'¿Cómo te llamas?';$('#miNombre').value=(S.me&&S.me.nombre)||'';setAv(+(S.me&&S.me.avatar)||12);open('#dlgNombre')}
 $('#menuNombre').onclick=()=>{if(S.me)openPerfil()};
 $('#whoLine').onclick=()=>{if(S.me)openPerfil()};
 $('#btnBell').onclick=()=>{if(!can('inventario'))return;S.lowOnly=true;$('#chipLow').setAttribute('aria-pressed','true');showTab('inventario');renderInv();if($('#bellDot').hidden)toast('Ningún producto está en stock bajo')};
@@ -1264,7 +1297,7 @@ $('#corteForm').addEventListener('submit',async e=>{e.preventDefault();if(!S.tur
   S.busy=true;$('#btnCorteOk').disabled=true;
   const fin={estado:'cerrado',cerrado:Date.now(),contado,esperado:r.esperado,diferencia:dif,resumen:r};
   try{await Store.update('turnos/'+t.id,fin);close('#dlgCorte');
-    showTicket(lineasCorte({...t,...fin}),{title:Math.abs(dif)<0.01?'Corte: cuadra':dif<0?`Corte: faltan ${money(-dif)}`:`Corte: sobran ${money(dif)}`,file:`corte-${dayKey(new Date())}-${(S.me?.nombre||'').replace(/\W+/g,'-')}`,nueva:false})}
+    showTicket(lineasCorte({...t,...fin}),{title:Math.abs(dif)<0.01?'Corte: cuadra':dif<0?`Corte: faltan ${money(-dif)}`:`Corte: sobran ${money(dif)}`,file:`corte-${dayKey(new Date())}-${(S.me?.nombre||'').replace(/\W+/g,'-')}`,nueva:false}).then(()=>{$('#dlgTicket').onclose=()=>{if(FB&&slots.list().length>=2)lockNow()}})}
   catch(ex){toast(errMsg(ex))}finally{S.busy=false;$('#btnCorteOk').disabled=false}});
 function renderTurnos(){
   const list=S.turnos.filter(t=>t.estado==='cerrado').sort((a,b)=>b.cerrado-a.cerrado).slice(0,40);
@@ -1429,8 +1462,8 @@ function renderUsuarios(){
   const list=S.usuarios.slice().sort((a,b)=>(a.rol==='pendiente'?-1:0)-(b.rol==='pendiente'?-1:0)||String(a.nombre).localeCompare(b.nombre,'es'));
   $('#usrBody').innerHTML=list.length?list.map(u=>{const yo=u.id===S.uid;const due=u.rol==='dueno'&&u.esDueno;
     return `<tr><td><span class="urow"><img class="av" src="${avSrc(u)}" alt=""><b>${esc(u.nombre)}</b></span>${yo?' <span class="muted">(tú)</span>':''}${u.rol==='pendiente'?' <span class="pill warn">Pendiente</span>':''}</td>
-    <td>${due?'Dueño':`<select class="inline" data-uid="${esc(u.id)}" aria-label="Rol de ${esc(u.nombre)}">${['pendiente','cajero','almacen','dueno'].map(r=>`<option value="${r}" ${u.rol===r?'selected':''}>${r==='pendiente'?'Sin acceso':ROLES[r].label}</option>`).join('')}</select>`}</td>
-    <td class="muted num" style="font-size:13px">${u.visto?fechaCorta(u.visto):'—'}</td></tr>`}).join('')
+    <td>${due?'Dueño':`<select class="inline" data-uid="${esc(u.id)}" aria-label="Rol de ${esc(u.nombre)}">${['pendiente','cajero','almacen','encargado','dueno'].map(r=>`<option value="${r}" ${u.rol===r?'selected':''}>${r==='pendiente'?'Sin acceso':ROLES[r].label}</option>`).join('')}</select>`}</td>
+    <td class="muted num" style="font-size:13px">${u.visto?fechaCorta(u.visto):'—'}${FB?` <button type="button" class="btn ghost" data-pinreset="${esc(u.id)}" style="min-height:30px;padding:2px 8px;font-size:12px">Restablecer PIN</button>`:''}</td></tr>`}).join('')
     :'<tr><td colspan="3" class="muted">Nadie más ha entrado todavía.</td></tr>';
 }
 $('#usrBody').addEventListener('change',async e=>{const s=e.target.closest('select[data-uid]');if(!s)return;
@@ -1540,7 +1573,7 @@ window.__nativeScan=code=>{code=String(code||'').trim();if(!code)return;
 (()=>{let buf='',last=0,timer=null;
   const flush=()=>{clearTimeout(timer);const code=buf;buf='';if(code.length>=4)window.__nativeScan(code)};
   document.addEventListener('keydown',e=>{const t=e.target,tag=t&&t.tagName;if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
-    if(e.ctrlKey||e.altKey||e.metaKey)return;const now=Date.now();if(now-last>120)buf='';last=now;
+    if(e.ctrlKey||e.altKey||e.metaKey)return;const now=Date.now();if(S.locked||$('#dlgPin').open)return;if(now-last>120)buf='';last=now;
     if(e.key==='Enter'||e.key==='Tab'){if(buf.length>=4){e.preventDefault();flush()}return}
     if(e.key&&e.key.length===1){buf+=e.key;clearTimeout(timer);timer=setTimeout(flush,200)}},true);
   let deb=null;const si=$('#scanInput');
@@ -1587,17 +1620,76 @@ function setLgModo(m){lgModo=m;$('#lgTitle').textContent=m==='entrar'?'Entrar a 
 $('#lgToggle').onclick=()=>setLgModo(lgModo==='entrar'?'crear':'entrar');
 $('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const em=$('#lgEmail').value.trim(),pw=$('#lgPass').value;
   $('#lgBtn').disabled=true;$('#lgErr').hidden=true;
-  try{if(lgModo==='entrar')await firebase.auth().signInWithEmailAndPassword(em,pw);else await firebase.auth().createUserWithEmailAndPassword(em,pw)}
+  try{if(lgModo==='entrar')await S.loginApp.auth().signInWithEmailAndPassword(em,pw);else await S.loginApp.auth().createUserWithEmailAndPassword(em,pw)}
   catch(ex){$('#lgErr').textContent=authErr(ex);$('#lgErr').hidden=false}finally{$('#lgBtn').disabled=false}});
 $('#lgReset').onclick=async()=>{const em=$('#lgEmail').value.trim();if(!em){$('#lgErr').textContent='Escribe tu correo arriba y vuelve a tocar "Olvidé mi contraseña".';$('#lgErr').hidden=false;return}
-  try{firebase.auth().languageCode='es';await firebase.auth().sendPasswordResetEmail(em);toast('Te mandamos un correo para cambiar tu contraseña')}catch(ex){$('#lgErr').textContent=authErr(ex);$('#lgErr').hidden=false}};
-$('#menuLogout').onclick=async()=>{if(!await confirmBox('Cerrar sesión','¿Salir de tu cuenta en este dispositivo?','Salir'))return;try{await firebase.auth().signOut()}catch(e){}location.reload()};
+  try{S.loginApp.auth().languageCode='es';await S.loginApp.auth().sendPasswordResetEmail(em);toast('Te mandamos un correo para cambiar tu contraseña')}catch(ex){$('#lgErr').textContent=authErr(ex);$('#lgErr').hidden=false}};
+$('#menuLogout').onclick=async()=>{if(!await confirmBox('Cerrar sesión','¿Salir de tu cuenta en este dispositivo? Para volver a entrar necesitarás tu correo y contraseña.','Salir'))return;
+  try{await S.fbApp.auth().signOut()}catch(e){}slots.save(slots.list().filter(x=>x.uid!==S.uid));slots.setActive('');location.reload()};
+
+/* Cuentas guardadas en este dispositivo y bloqueo con PIN */
+const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const slots={list(){const l=LS.get('pos-slots',[]);return Array.isArray(l)?l:[]},save(l){LS.set('pos-slots',l)},active(){return LS.get('pos-active','')},setActive(u){LS.set('pos-active',u||'')},
+  upsert(x){const l=this.list();const k=l.findIndex(y=>y.uid===x.uid);if(k>=0)l[k]={...l[k],...x};else l.push(x);this.save(l)}};
+function fbApp(name){const ex=firebase.apps.find(a=>a.name===name);if(ex)return ex;return name==='[DEFAULT]'?firebase.initializeApp(window.FIREBASE_CONFIG):firebase.initializeApp(window.FIREBASE_CONFIG,name)}
+async function pinHash(uid,pin){const t=`caja-panda:${uid}:${pin}`;try{const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+  catch(e){let h=5381;for(const c of t)h=((h*33)^c.charCodeAt(0))>>>0;return 'x'+h.toString(16)}}
+let pinRes=null,pinBuf='';
+$('#pinPad').innerHTML=[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join('')+'<button type="button" class="alt" data-k="x">Cancelar</button><button type="button" data-k="0">0</button><button type="button" class="alt" data-k="b">Borrar</button>';
+function pinDraw(){$$('#pinDots i').forEach((d,k)=>d.classList.toggle('on',k<pinBuf.length))}
+function pinKey(k){if(!pinRes)return;if(k==='x'){const r=pinRes;pinRes=null;close('#dlgPin');r(null);return}
+  if(k==='b'){pinBuf=pinBuf.slice(0,-1);pinDraw();return}
+  if(pinBuf.length<4){pinBuf+=k;pinDraw();$('#pinErr').hidden=true}
+  if(pinBuf.length===4){const v=pinBuf,r=pinRes;pinRes=null;setTimeout(()=>r(v),120)}}
+$('#pinPad').onclick=e=>{const b=e.target.closest('button[data-k]');if(b)pinKey(b.dataset.k)};
+document.addEventListener('keydown',e=>{if(!$('#dlgPin').open)return;if(/^\d$/.test(e.key)){e.preventDefault();pinKey(e.key)}else if(e.key==='Backspace'){e.preventDefault();pinKey('b')}});
+$('#dlgPin').addEventListener('cancel',e=>{e.preventDefault();pinKey('x')});
+function askPin({title,sub,av,err}){pinBuf='';pinDraw();$('#pinTitle').textContent=title;$('#pinSub').textContent=sub||'';$('#pinAv').src=av||'img/av12.webp';
+  $('#pinErr').hidden=!err;$('#pinErr').textContent=err||'';open('#dlgPin');return new Promise(r=>{pinRes=r})}
+async function crearPin(){const av=avSrc(S.me);let err='';
+  for(;;){const a=await askPin({title:'Crea tu PIN',sub:'4 números que solo tú conozcas',av,err});if(a==null)return false;
+    const b=await askPin({title:'Repite tu PIN',sub:'Para confirmar',av});if(b==null)return false;
+    if(a!==b){err='No coincidieron. Inténtalo de nuevo.';continue}
+    const h=await pinHash(S.uid,a);try{await Store.set('pins/'+S.uid,{h,ts:Date.now()});S.pinHash=h;slots.upsert({uid:S.uid,pin:h});close('#dlgPin');toast('PIN guardado');renderPinRow();return true}
+    catch(e){close('#dlgPin');toast('No se pudo guardar el PIN: '+errMsg(e));return false}}}
+function renderPinRow(){if(!FB)return;$('#pinRow').hidden=!S.me;$('#pinState').textContent=S.pinHash?'Ya tienes PIN. Se pide al entrar en un dispositivo compartido.':'Aún no tienes PIN.';$('#pinSet').textContent=S.pinHash?'Cambiar PIN':'Crear PIN'}
+$('#pinSet').onclick=async()=>{close('#dlgNombre');await crearPin()};
+$('#usrBody').addEventListener('click',async e=>{const b=e.target.closest('button[data-pinreset]');if(!b||!can('ajustes'))return;const u=S.usrById.get(b.dataset.pinreset);
+  if(!await confirmBox('Restablecer PIN',`Se borra el PIN de ${u?u.nombre:'este usuario'}. La próxima vez que entre creará uno nuevo.`,'Restablecer'))return;
+  try{await Store.del('pins/'+b.dataset.pinreset);toast('PIN restablecido')}catch(ex){toast(errMsg(ex))}});
+function lockNow(){slots.setActive('');try{sessionStorage.removeItem('pos-unlocked')}catch(e){}location.reload()}
+$('#menuLock').onclick=()=>{if(S.cart.length){toast('Cobra o vacía la venta actual antes de bloquear');return}lockNow()};
+function activar(uid){slots.setActive(uid);try{sessionStorage.setItem('pos-unlocked',uid)}catch(e){}location.reload()}
+function soloVista(id){S.locked=id==='v-lock';$('#v-cargando').hidden=true;$('#tabs').hidden=true;$('#btnMenu').hidden=true;$('#btnBell').hidden=true;$$('section.view').forEach(x=>x.hidden=x.id!==id)}
+function showLock(){soloVista('v-lock');$('#whoLine').textContent='Caja bloqueada';
+  $('#lockGrid').innerHTML=slots.list().map(x=>`<button type="button" data-uid="${esc(x.uid)}"><img src="${avSrc(x)}" alt=""><b>${esc(x.nombre||'Usuario')}</b><span>${esc((ROLES[x.rol]||ROLES.pendiente).label)}</span></button>`).join('')}
+function showLogin(back){soloVista('v-login');$('#whoLine').textContent='Sin sesión';$('#lgBack').hidden=!back;setLgModo('entrar');$('#lgPass').value=''}
+$('#lgBack').onclick=()=>showLock();
+$('#lockAdd').onclick=()=>{const used=new Set(slots.list().map(x=>x.app));let n=2;while(used.has('s'+n)||firebase.apps.some(a=>a.name==='s'+n))n++;const name='s'+n,app=fbApp(name);S.loginApp=app;
+  app.auth().onAuthStateChanged(u=>{if(!u)return;const ya=slots.list().find(x=>x.uid===u.uid);
+    if(ya&&ya.app!==name){app.auth().signOut().catch(()=>{});toast('Esa cuenta ya está en este dispositivo');showLock();return}
+    slots.upsert({app:name,uid:u.uid,nombre:(u.email||'').split('@')[0],rol:'pendiente'});activar(u.uid)});
+  showLogin(true)};
+$('#lockGrid').onclick=async e=>{const b=e.target.closest('button[data-uid]');if(!b||S.busy)return;const x=slots.list().find(y=>y.uid===b.dataset.uid);if(!x)return;S.busy=true;
+  try{const app=fbApp(x.app);const u=await new Promise(r=>{const un=app.auth().onAuthStateChanged(v=>{un();r(v)})});
+    if(!u||u.uid!==x.uid){slots.save(slots.list().filter(y=>y.uid!==x.uid));toast('Esa sesión se cerró. Agrega la cuenta otra vez.');if(slots.list().length)showLock();else location.reload();return}
+    let h=x.pin||'';try{const d=await Promise.race([app.firestore().doc('pins/'+x.uid).get(),new Promise(r=>setTimeout(()=>r(null),2500))]);if(d){h=d.exists?(d.data().h||''):'';slots.upsert({uid:x.uid,pin:h})}}catch(err){}
+    if(!h){activar(x.uid);return}
+    let err='';for(;;){const pin=await askPin({title:`Hola, ${x.nombre||''}`,sub:'Escribe tu PIN',av:avSrc(x),err});if(pin==null)return;
+      if(await pinHash(x.uid,pin)===h){close('#dlgPin');activar(x.uid);return}err='PIN incorrecto'}
+  }finally{S.busy=false}};
 
 async function bootFB(){
-  firebase.initializeApp(window.FIREBASE_CONFIG);
-  const db=firebase.firestore();
+  S.dl=makeDl();
+  const net=()=>setConn(navigator.onLine);addEventListener('online',net);addEventListener('offline',net);net();
+  const list=slots.list();let act=slots.active();
+  if(list.length>=2){let un='';try{un=sessionStorage.getItem('pos-unlocked')||''}catch(e){}if(un!==act)act=''}
+  const slot=list.find(x=>x.uid===act)||null;
+  if(list.length&&!slot){S.loginApp=fbApp('[DEFAULT]');showLock();return}
+  const app=fbApp(slot?slot.app:'[DEFAULT]');S.fbApp=app;S.loginApp=app;
+  const db=app.firestore();
   try{await db.enablePersistence({synchronizeTabs:true})}catch(e){}
-  Store.db=db;S.dl=makeDl();
+  Store.db=db;
   const soft=p=>{let late=false;p.catch(e=>{if(late)toast('No se guardó en la nube: '+errMsg(e))});return Promise.race([p,new Promise(r=>setTimeout(()=>{late=true;r()},1500))])};
   Store.set=function(path,d){return soft(this.db.doc(path).set(d))};
   Store.update=function(path,d){return soft(this.db.doc(path).update(d))};
@@ -1605,17 +1697,20 @@ async function bootFB(){
   Store.incr=async function(path,field,delta,extra={}){const ref=this.db.doc(path);let antes=0;
     try{const s=await ref.get({source:'cache'});if(!s.exists)return null;antes=+s.data()[field]||0}catch(e){}
     await soft(ref.update({[field]:firebase.firestore.FieldValue.increment(delta),...extra}));return{antes,despues:antes+delta}};
-  const net=()=>setConn(navigator.onLine,navigator.onLine?'Caja disponible':'Sin internet');
-  addEventListener('online',net);addEventListener('offline',net);net();
-  $('#menuLogout').hidden=false;
+  $('#menuLogout').hidden=false;$('#menuLock').hidden=false;
   let started=false;
-  firebase.auth().onAuthStateChanged(async u=>{
-    if(!u){$('#v-cargando').hidden=true;$('#tabs').hidden=true;$('#btnMenu').hidden=true;$$('section.view').forEach(x=>x.hidden=x.id!=='v-login');$('#whoLine').textContent='Sin sesión';setLgModo('entrar');return}
+  app.auth().onAuthStateChanged(async u=>{
+    if(!u){if(started){location.reload();return}
+      if(slot){slots.save(slots.list().filter(x=>x.uid!==slot.uid));slots.setActive('');if(slots.list().length)showLock();else showLogin(false)}else showLogin(false);return}
     if(started)return;started=true;
-    $('#v-login').hidden=true;$('#v-cargando').hidden=false;
+    $('#v-login').hidden=true;$('#v-cargando').hidden=false;$('#btnBell').hidden=false;
     S.uid=u.uid;
+    slots.upsert({app:slot?slot.app:'[DEFAULT]',uid:u.uid});slots.setActive(u.uid);try{sessionStorage.setItem('pos-unlocked',u.uid)}catch(e){}
     let d=null;try{d=await Store.get('sistema/dueno')}catch(e){}
     S.ownerExists=!!d;S.isOwner=!!(d&&d.uid===u.uid);
+    let pinVisto=false;
+    Store.watchDoc('pins/'+u.uid,p=>{S.pinHash=(p&&p.h)||'';slots.upsert({uid:u.uid,pin:S.pinHash});renderPinRow();
+      if(!pinVisto){pinVisto=true;if(!S.pinHash&&slots.list().length>=2)setTimeout(()=>{if(S.me&&!S.pinHash&&!$$('dialog').some(x=>x.open))crearPin()},1500)}},()=>{});
     startUser();
   });
 }
