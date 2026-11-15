@@ -1523,6 +1523,17 @@ window.__nativeScan=code=>{code=String(code||'').trim();if(!code)return;
   if($('#dlgProd').open){$('#pCodigo').value=code;if(!editing&&!$('#pNombre').value.trim())autollenar(code,false);return}
   if($('#dlgEntrada').open){const i=$('#eCodigo');i.value=code;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return}
   if(!can('vender'))return;showTab('vender');$('#scanInput').value=code;handleScan(code)};
+/* Lector de pistola (teclado): funciona aunque el cursor no esté en el cuadro de escaneo, y aunque el lector no mande Enter */
+(()=>{let buf='',last=0,timer=null;
+  const flush=()=>{clearTimeout(timer);const code=buf;buf='';if(code.length>=4)window.__nativeScan(code)};
+  document.addEventListener('keydown',e=>{const t=e.target,tag=t&&t.tagName;if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+    if(e.ctrlKey||e.altKey||e.metaKey)return;const now=Date.now();if(now-last>120)buf='';last=now;
+    if(e.key==='Enter'||e.key==='Tab'){if(buf.length>=4){e.preventDefault();flush()}return}
+    if(e.key&&e.key.length===1){buf+=e.key;clearTimeout(timer);timer=setTimeout(flush,200)}},true);
+  let deb=null;const si=$('#scanInput');
+  si.addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(()=>{const v=si.value.trim();if(v.length>=6&&S.byCode.has(v))handleScan(v)},350)});
+  si.addEventListener('keydown',e=>{if(e.key==='Tab'&&si.value.trim()){e.preventDefault();handleScan(si.value)}});
+})();
 window.__nativeScanErr=msg=>{if(!/cancel/i.test(msg))toast('No se pudo abrir el escáner: '+msg)};
 window.__nativeBack=()=>{const d=$$('dialog').find(x=>x.open);if(d){d.close();return true}
   if(!$('#menu').hidden){$('#menu').hidden=true;return true}
