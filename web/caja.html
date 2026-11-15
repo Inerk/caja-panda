@@ -268,6 +268,24 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
 .avgrid button[aria-checked="true"]{box-shadow:0 0 0 3px var(--green);background:#fff}
 .avgrid button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
+.check{display:flex;gap:10px;align-items:flex-start;font-weight:600;cursor:pointer}
+.check input{width:20px;height:20px;flex:none;margin-top:1px;accent-color:var(--green-deep)}
+.pfoto{width:84px;height:84px;border-radius:16px;object-fit:cover;border:1px solid var(--line);flex:none;background:#fff}
+.pfoto.none{display:grid;place-items:center;color:var(--muted);font-size:12px;background:var(--bg)}
+.pth{width:36px;height:36px;border-radius:9px;object-fit:cover;vertical-align:middle;margin-right:8px;border:1px solid var(--line)}
+.rapidahead{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:14px 4px 8px}
+.rapida{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:10px}
+.rapida button{position:relative;border:1px solid var(--line);background:#fff;border-radius:18px;padding:8px 6px 9px;cursor:pointer;display:grid;justify-items:center;gap:5px;box-shadow:0 3px 10px rgba(14,42,94,.07);min-width:0;transition:transform .08s}
+.rapida button:active{transform:scale(.94)}
+.rapida button.pop{animation:pop .28s}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(.9);box-shadow:0 0 0 4px rgba(79,184,18,.45)}100%{transform:scale(1)}}
+.rapida .ph{width:64px;height:64px;border-radius:14px;object-fit:cover;display:grid;place-items:center;font-size:28px;font-weight:900;color:#fff}
+.rapida .nm{font-size:12.5px;font-weight:800;color:var(--fg);line-height:1.15;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;text-align:center}
+.rapida .pr{font-size:13px;font-weight:900;color:var(--green-deep)}
+.rapida .bd{position:absolute;top:-6px;right:-6px;min-width:24px;height:24px;padding:0 6px;border-radius:999px;background:var(--green);color:#fff;font-weight:900;font-size:13px;display:grid;place-items:center;border:2px solid #fff}
+.qtygrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.qtygrid button{padding:14px 0;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--accent);font-weight:900;font-size:18px;cursor:pointer}
+
 /* Tablet y computadora: caja registradora en dos columnas */
 @media (min-width:900px){
   main{padding-block:12px 40px}
@@ -378,6 +396,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
       </div>
       <div class="hint" style="margin:8px 4px 0">Con lector USB o Bluetooth solo escanea. Para varias piezas: <span class="num">3*código</span></div>
       <div class="results" id="results"></div>
+      <div id="rapidaBox" hidden><div class="rapidahead">Venta rápida</div><div class="rapida" id="rapida"></div></div>
     </div>
     <div style="display:grid;gap:12px">
       <div class="sechead">
@@ -557,15 +576,21 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <header><h2 id="prodTitle">Nuevo producto</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div class="form">
     <div class="field full"><label class="label" for="pNombre">Nombre</label><input id="pNombre" required maxlength="60"></div>
-    <div class="field full"><label class="label" for="pCodigo">Código de barras (escanéalo aquí)</label><div class="row" style="flex-wrap:nowrap"><input id="pCodigo" class="num" maxlength="40" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn" data-nscan="pCodigo" hidden>Escanear</button></div></div>
+    <div class="field full"><label class="label" for="pCodigo">Código de barras (escanéalo aquí)</label><div class="row" style="flex-wrap:nowrap"><input id="pCodigo" class="num" maxlength="40" autocomplete="off" style="flex:1;min-width:0"><button type="button" class="btn" data-nscan="pCodigo" hidden>Escanear</button></div><button type="button" class="btn ghost" id="pGenCode" style="justify-self:start">Generar código QR propio</button></div>
     <div class="field"><label class="label" for="pPrecio">Precio de venta</label><input id="pPrecio" type="number" min="0" step="0.01" required inputmode="decimal"></div>
     <div class="field"><label class="label" for="pCosto">Costo</label><input id="pCosto" type="number" min="0" step="0.01" inputmode="decimal"></div>
     <div class="field"><label class="label" for="pStock">Existencia</label><input id="pStock" type="number" step="1" inputmode="numeric"></div>
     <div class="field"><label class="label" for="pMin">Stock mínimo</label><input id="pMin" type="number" min="0" step="1" inputmode="numeric"></div>
     <div class="field full"><label class="label" for="pCat">Categoría</label><input id="pCat" maxlength="30" list="catList"><datalist id="catList"></datalist></div>
+    <div class="field full"><span class="label">Foto</span>
+      <div class="row"><img id="pFotoPrev" class="pfoto" alt="" hidden><div id="pFotoNone" class="pfoto none">Sin foto</div>
+        <div style="display:grid;gap:6px"><button type="button" class="btn" id="pFotoCam" hidden>Tomar foto</button><label class="btn" for="pFotoFile">Elegir foto</label><button type="button" class="btn ghost" id="pFotoDel" hidden>Quitar foto</button></div>
+        <input type="file" id="pFotoFile" accept="image/*" hidden></div></div>
+    <label class="check full" for="pRapido"><input type="checkbox" id="pRapido"> Mostrar en <b>Venta rápida</b> (cuadrito en la pantalla de Vender)</label>
+    <label class="check full" for="pSuelto"><input type="checkbox" id="pSuelto"> Se vende por <b>piezas sueltas</b>: al escanear, preguntar cuántas piezas</label>
   </div>
   <div class="banner bad" id="prodErr" hidden style="margin:0"></div>
-  <footer><button type="button" class="btn danger" id="btnBorrar" hidden>Borrar</button><span style="flex:1"></span><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Guardar</button></footer>
+  <footer><button type="button" class="btn danger" id="btnBorrar" hidden>Borrar</button><button type="button" class="btn" id="btnEtiqueta" hidden>Etiqueta QR</button><span style="flex:1"></span><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Guardar</button></footer>
 </form></dialog>
 
 <dialog id="dlgEntrada"><form class="dlg" id="entForm">
@@ -638,6 +663,14 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <h2 id="cfTitle">¿Seguro?</h2><p id="cfText"></p>
   <footer><button class="btn" id="cfNo">No</button><button class="btn danger" id="cfYes">Sí</button></footer>
 </div></dialog>
+
+<dialog id="dlgQty"><form class="dlg" id="qtyForm">
+  <header><div style="display:flex;gap:12px;align-items:center;min-width:0"><img id="qtyFoto" class="pfoto" alt="" hidden><div style="min-width:0"><h2 id="qtyName">Producto</h2><div class="muted num" id="qtyPrice"></div></div></div><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <div class="field"><label class="label" for="qtyN">¿Cuántas piezas?</label><input id="qtyN" class="moneyin" type="number" inputmode="numeric" min="1" step="1" value="1" required></div>
+  <div class="qtygrid" id="qtyQuick"></div>
+  <div class="kv" style="font-size:18px"><span>Importe</span><b class="num" id="qtyTotal">$0.00</b></div>
+  <footer><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Agregar a la venta</button></footer>
+</form></dialog>
 
 <dialog id="dlgImport"><div class="dlg">
   <header><h2>Importar lista de productos</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
@@ -780,7 +813,7 @@ function setProductos(list){
   S.byCode=new Map(list.filter(p=>p.codigo).map(p=>[String(p.codigo).trim(),p]));
   $('#catList').innerHTML=[...new Set(list.map(p=>p.categoria).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join('');
   S.cart.forEach(it=>{const p=S.byId.get(it.pid);if(p)it.stock=p.stock});
-  renderCart();renderInv();renderResults();
+  renderCart();renderInv();renderResults();renderRapida();
 }
 function search(q,limit=8){
   q=norm(q).trim();if(!q)return[];const words=q.split(/\s+/);
@@ -800,7 +833,7 @@ function handleScan(raw){
   let v=raw.trim();if(!v)return;
   let cant=1;const m=v.match(/^(\d+)\s*[*xX]\s*(.+)$/);if(m){cant=+m[1]||1;v=m[2].trim()}
   const p=S.byCode.get(v);
-  if(p){addToCart(p,cant);clearScan();return}
+  if(p){if(p.suelto&&!m)askQty(p);else addToCart(p,cant);clearScan();return}
   const found=search(v);
   if(found.length===1){addToCart(found[0],cant);clearScan();return}
   if(found.length===0){
@@ -821,6 +854,48 @@ function renderResults(){
 $('#results').onclick=e=>{const b=e.target.closest('button[data-id]');if(!b)return;const p=S.byId.get(b.dataset.id);
   const m=$('#scanInput').value.match(/^(\d+)\s*[*xX]/);if(p){addToCart(p,m?+m[1]:1);clearScan()}};
 
+/* ---------- Fotos, piezas sueltas, QR y venta rápida ---------- */
+const okFoto=f=>typeof f==='string'&&f.startsWith('data:image/');
+let prodFoto='';
+function setProdFoto(f){prodFoto=f||'';$('#pFotoPrev').hidden=!prodFoto;$('#pFotoNone').hidden=!!prodFoto;$('#pFotoDel').hidden=!prodFoto;if(prodFoto)$('#pFotoPrev').src=prodFoto}
+function thumbFrom(src){return new Promise((res,rej)=>{const im=new Image();im.onload=()=>{const S2=200,c=document.createElement('canvas');c.width=c.height=S2;const m=Math.min(im.width,im.height);
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,S2,S2);x.drawImage(im,(im.width-m)/2,(im.height-m)/2,m,m,0,0,S2,S2);
+  let d=c.toDataURL('image/webp',0.72);if(!d.startsWith('data:image/webp'))d=c.toDataURL('image/jpeg',0.72);res(d)};im.onerror=()=>rej(new Error('img'));im.src=src})}
+$('#pFotoFile').onchange=async e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(!f)return;const u=URL.createObjectURL(f);try{setProdFoto(await thumbFrom(u))}catch(ex){toast('No se pudo leer esa imagen')}finally{URL.revokeObjectURL(u)}};
+$('#pFotoDel').onclick=()=>setProdFoto('');
+window.__nativePhoto=async d=>{try{setProdFoto(await thumbFrom(d))}catch(e){toast('No se pudo usar la foto')}};
+$('#pGenCode').onclick=()=>{if($('#pCodigo').value.trim()){toast('Este producto ya tiene código');return}
+  let c;do{c='AP'+String(Math.floor(Math.random()*1e6)).padStart(6,'0')}while(S.byCode.has(c));$('#pCodigo').value=c;$('#pSuelto').checked=true;toast('Código generado. Guarda y luego imprime la etiqueta')};
+function drawLabel(p){const w=S.cfg.ancho==='80'?576:384,c=$('#ticketCanvas'),x=c.getContext('2d');
+  const q=qrcode(0,'M');q.addData(String(p.codigo));q.make();const n=q.getModuleCount(),cell=Math.floor((w*0.62)/(n+2)),qs=cell*n,top=26;
+  const fs=Math.round(w/13);x.font=`800 ${fs}px Nunito, system-ui, sans-serif`;
+  const words=String(p.nombre).split(/\s+/),lines=[];let ln='';for(const wd of words){const t=(ln+' '+wd).trim();if(x.measureText(t).width>w-28&&ln){lines.push(ln);ln=wd}else ln=t}if(ln)lines.push(ln);
+  const h=top+qs+18+lines.length*Math.round(fs*1.2)+Math.round(fs*1.9)+Math.round(fs*0.9)+40;c.width=w;c.height=h;
+  x.fillStyle='#fff';x.fillRect(0,0,w,h);x.fillStyle='#000';const ox=Math.round((w-qs)/2);
+  for(let r=0;r<n;r++)for(let k=0;k<n;k++)if(q.isDark(r,k))x.fillRect(ox+k*cell,top+r*cell,cell,cell);
+  x.textAlign='center';x.textBaseline='top';let y=top+qs+18;x.font=`800 ${fs}px Nunito, system-ui, sans-serif`;
+  for(const l of lines){x.fillText(l,w/2,y);y+=Math.round(fs*1.2)}
+  x.font=`900 ${Math.round(fs*1.5)}px Nunito, system-ui, sans-serif`;x.fillText(money(p.precio)+(p.suelto?' c/u':''),w/2,y);y+=Math.round(fs*1.9);
+  x.font=`400 ${Math.round(fs*0.6)}px "JetBrains Mono", monospace`;x.fillText(String(p.codigo),w/2,y)}
+$('#btnEtiqueta').onclick=()=>{const p=editing&&S.byId.get(editing.id);if(!p||!p.codigo){toast('Guarda el producto con su código primero');return}
+  if(typeof qrcode!=='function'){toast('El generador de QR no está disponible aquí');return}
+  close('#dlgProd');showTicket(async()=>{try{await document.fonts.load('800 30px Nunito')}catch(e){}drawLabel(p)},{title:'Etiqueta QR',file:'etiqueta-'+String(p.nombre).replace(/\W+/g,'-'),nueva:false})};
+let qtyP=null;
+function askQty(p){qtyP=p;$('#qtyName').textContent=p.nombre;$('#qtyPrice').textContent=money(p.precio)+' c/u · hay '+(+p.stock||0);
+  $('#qtyFoto').hidden=!okFoto(p.foto);if(okFoto(p.foto))$('#qtyFoto').src=p.foto;
+  $('#qtyQuick').innerHTML=[1,2,3,4,5,6,8,10,12,20].map(n=>`<button type="button" data-n="${n}">${n}</button>`).join('');
+  $('#qtyN').value=1;qtyCalc();open('#dlgQty');setTimeout(()=>{$('#qtyN').focus();$('#qtyN').select()},60)}
+function qtyCalc(){$('#qtyTotal').textContent=money((+qtyP.precio||0)*(parseInt($('#qtyN').value,10)||0))}
+$('#qtyN').oninput=qtyCalc;
+$('#qtyQuick').onclick=e=>{const b=e.target.closest('button[data-n]');if(!b)return;addToCart(qtyP,+b.dataset.n);close('#dlgQty');clearScan()};
+$('#qtyForm').addEventListener('submit',e=>{e.preventDefault();const n=parseInt($('#qtyN').value,10);if(!(n>0))return;addToCart(qtyP,n);close('#dlgQty');clearScan()});
+const TILE=['#1c6fe0','#37a40c','#e08a1c','#c0392b','#7d3cc8','#0e9aa7','#d6336c','#5b6f92'];
+function renderRapida(){const list=S.productos.filter(p=>p.rapido);const box=$('#rapidaBox');if(!box)return;box.hidden=!list.length||!can('vender');
+  $('#rapida').innerHTML=list.map(p=>{const it=S.cart.find(i=>i.pid===p.id);let hsh=0;for(const ch of String(p.nombre))hsh=(hsh*31+ch.charCodeAt(0))>>>0;
+    return `<button type="button" data-id="${esc(p.id)}">${okFoto(p.foto)?`<img class="ph" src="${p.foto}" alt="">`:`<span class="ph" style="background:${TILE[hsh%TILE.length]}">${esc(String(p.nombre).trim()[0]||'?').toUpperCase()}</span>`}<span class="nm">${esc(p.nombre)}</span><span class="pr">${money(p.precio)}</span>${it?`<span class="bd">${it.cant}</span>`:''}</button>`}).join('')}
+$('#rapida').onclick=e=>{const b=e.target.closest('button[data-id]');if(!b)return;const p=S.byId.get(b.dataset.id);if(!p)return;const id=b.dataset.id;addToCart(p,1);
+  const nb=$(`#rapida button[data-id="${CSS.escape(id)}"]`);if(nb)nb.classList.add('pop')};
+
 function cartTotal(){return r2(S.cart.reduce((a,i)=>a+i.precio*i.cant,0))}
 function renderCart(){
   const box=$('#cart');
@@ -832,7 +907,7 @@ function renderCart(){
   const t=cartTotal(),n=S.cart.reduce((a,i)=>a+i.cant,0);
   $('#total').textContent=money(t);$('#countLine').textContent=`${n} artículo${n===1?'':'s'}`;
   $('#btnCobrar').disabled=!S.cart.length||!can('vender');
-  $('#cobrarTxt').textContent=S.turno?'Cobrar':'Abrir turno';
+  $('#cobrarTxt').textContent=S.turno?'Cobrar':'Abrir turno';renderRapida();
   renderTurnCard();
 }
 $('#cart').addEventListener('click',e=>{const b=e.target.closest('button[data-d]');if(!b)return;const it=S.cart[+b.dataset.k];it.cant+=+b.dataset.d;if(it.cant<=0)S.cart.splice(+b.dataset.k,1);renderCart()});
@@ -967,7 +1042,7 @@ async function drawLines(lines){
   }
 }
 async function showTicket(lines,{title,file,nueva,drawer}){
-  $('#ticketTitle').textContent=title;await drawLines(lines);
+  $('#ticketTitle').textContent=title;if(typeof lines==='function')await lines();else await drawLines(lines);
   if(NATIVE) $('#ticketFooter').innerHTML=`<button class="btn" data-close>${nueva?'Listo':'Cerrar'}</button><button class="btn" id="btnSaveTicket">Compartir</button><button class="btn primary" id="btnPrintTicket">Imprimir</button>`;
   else $('#ticketFooter').innerHTML=`<button class="btn" data-close>${nueva?'Listo':'Cerrar'}</button><button class="btn primary" id="btnSaveTicket" ${S.dl?'':'disabled title="No disponible aquí"'}>Guardar ticket</button>`;
   $('#btnSaveTicket').onclick=()=>saveCanvas(file);
@@ -1172,7 +1247,7 @@ function renderInv(){
   const body=$('#invBody');
   if(!S.productos.length) body.innerHTML=`<tr><td colspan="${cols}"><div class="empty" style="border:0">Sin productos todavía.${can('inv_editar')?' Usa <b>Nuevo producto</b> y escanea el código en el campo correspondiente.':''}</div></td></tr>`;
   else if(!list.length) body.innerHTML=`<tr><td colspan="${cols}" class="muted">Ningún producto coincide.</td></tr>`;
-  else body.innerHTML=list.map(p=>`<tr class="${can('inv_editar')?'click':''}" data-id="${esc(p.id)}"><td><b>${esc(p.nombre)}</b>${p.categoria?`<div class="muted" style="font-size:12px">${esc(p.categoria)}</div>`:''}</td><td class="num" style="font-size:13px">${esc(p.codigo||'—')}</td><td class="r num">${money(p.precio)}</td>${showCost?`<td class="r num muted">${p.costo?money(p.costo):'—'}</td>`:''}<td class="r">${stockPill(p)}</td></tr>`).join('');
+  else body.innerHTML=list.map(p=>`<tr class="${can('inv_editar')?'click':''}" data-id="${esc(p.id)}"><td>${okFoto(p.foto)?`<img class="pth" src="${p.foto}" alt="">`:''}<b>${esc(p.nombre)}</b>${p.suelto?' <span class="pill mute">suelto</span>':''}${p.categoria?`<div class="muted" style="font-size:12px">${esc(p.categoria)}</div>`:''}</td><td class="num" style="font-size:13px">${esc(p.codigo||'—')}</td><td class="r num">${money(p.precio)}</td>${showCost?`<td class="r num muted">${p.costo?money(p.costo):'—'}</td>`:''}<td class="r">${stockPill(p)}</td></tr>`).join('');
   const low=S.productos.filter(p=>(+p.stock||0)<=minOf(p)).length;
   $('#bellDot').hidden=!low||!can('inventario');
   const valor=S.productos.reduce((a,p)=>a+Math.max(0,+p.stock||0)*(+p.costo||0),0);
@@ -1192,6 +1267,7 @@ function openProd(p,pre={}){
   editing=p;$('#prodTitle').textContent=p?'Editar producto':'Nuevo producto';
   $('#pNombre').value=p?.nombre||'';$('#pCodigo').value=p?.codigo||pre.codigo||'';$('#pPrecio').value=p?.precio??'';
   $('#pCosto').value=p?.costo??'';$('#pStock').value=p?.stock??0;$('#pMin').value=p?.minimo??S.cfg.stockMin;$('#pCat').value=p?.categoria||'';
+  $('#pRapido').checked=!!(p&&p.rapido);$('#pSuelto').checked=!!(p&&p.suelto);setProdFoto(p&&okFoto(p.foto)?p.foto:'');$('#btnEtiqueta').hidden=!p||!p.codigo;
   $('#btnBorrar').hidden=!p||!can('cancelar');$('#prodErr').hidden=true;open('#dlgProd');setTimeout(()=>$('#pNombre').focus(),60);
 }
 $('#pCodigo').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pPrecio').focus()}});
@@ -1202,7 +1278,7 @@ $('#prodForm').addEventListener('submit',async e=>{
   if(!nombre)return err('Escribe el nombre.');if(!(precio>=0))return err('Escribe un precio válido.');
   const dup=codigo&&S.byCode.get(codigo);if(dup&&(!editing||dup.id!==editing.id))return err(`Ese código ya es de "${dup.nombre}".`);
   const stock=parseInt($('#pStock').value,10)||0;const now=Date.now();
-  const data={nombre,codigo,precio,costo:r2($('#pCosto').value),stock,minimo:parseInt($('#pMin').value,10)||0,categoria:$('#pCat').value.trim(),actualizado:now};
+  const data={nombre,codigo,precio,costo:r2($('#pCosto').value),stock,minimo:parseInt($('#pMin').value,10)||0,categoria:$('#pCat').value.trim(),actualizado:now,foto:prodFoto||'',rapido:$('#pRapido').checked,suelto:$('#pSuelto').checked};
   try{
     if(editing){
       const cur=await Store.get('productos/'+editing.id);const antes=cur?(+cur.stock||0):0;
@@ -1440,6 +1516,7 @@ if(NATIVE){
   $('#menuPrinter').hidden=false;$('#menuUpdate').hidden=false;
   try{$('#menuUpdate').textContent=`Buscar actualizaciones (v${CajaNative.version()})`}catch(e){}
   $$('[data-nscan]').forEach(b=>{b.hidden=false;b.onclick=()=>CajaNative.scan()});
+  if(CajaNative.photo){$('#pFotoCam').hidden=false;$('#pFotoCam').onclick=()=>CajaNative.photo()}
   $('#btnScanFocus').onclick=()=>CajaNative.scan();
   document.querySelector('label[for="photoScan"]').addEventListener('click',e=>{e.preventDefault();CajaNative.scan()});
   const si=$('#scanInput');si.inputMode='none';

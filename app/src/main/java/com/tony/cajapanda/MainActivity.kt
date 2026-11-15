@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -30,6 +31,7 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -47,6 +49,15 @@ class MainActivity : ComponentActivity() {
     private val pickFile = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         fileCb?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
         fileCb = null
+    }
+
+    private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bmp: Bitmap? ->
+        if (bmp != null) {
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            val b64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
+            js("window.__nativePhoto&&window.__nativePhoto('data:image/jpeg;base64,$b64')")
+        }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -87,7 +98,8 @@ class MainActivity : ComponentActivity() {
                 fileCb?.onReceiveValue(null)
                 fileCb = callback
                 return try {
-                    pickFile.launch("*/*")
+                    val img = params.acceptTypes?.any { it.startsWith("image") } == true
+                    pickFile.launch(if (img) "image/*" else "*/*")
                     true
                 } catch (e: Exception) {
                     fileCb = null
@@ -197,6 +209,17 @@ class MainActivity : ComponentActivity() {
                     main.post { startActivity(Intent.createChooser(send, "Guardar o compartir")) }
                 } catch (e: Exception) {
                     toast("No se pudo compartir: ${e.message}")
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun photo() {
+            main.post {
+                try {
+                    takePhoto.launch(null)
+                } catch (e: Exception) {
+                    toast("No se pudo abrir la cámara")
                 }
             }
         }
