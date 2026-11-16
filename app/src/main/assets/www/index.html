@@ -1126,6 +1126,40 @@ async function drawVenta(v,saldo){
   for(const l of ml){x.fillText(l,W/2,y);y+=Math.round(25*k)}
   y+=Math.round(4*k);x.lineWidth=Math.max(3,Math.round(4*k));x.beginPath();x.moveTo(W*0.3,y+8*k);x.quadraticCurveTo(W/2,y-4*k,W*0.7,y+2*k);x.stroke();y+=Math.round(34*k);
   const img=x.getImageData(0,0,W,y);c.height=y;x.putImageData(img,0,0)}
+/* Corte de caja y comprobante de abono con el mismo diseño del ticket */
+async function drawDoc({titulo,filas,firma,pie}){
+  const W=S.cfg.ancho==='80'?576:384,k=W/384,P=Math.round(6*k),F='Nunito, system-ui, sans-serif';
+  try{await Promise.all([document.fonts.load(`800 20px Nunito`),document.fonts.load(`600 20px Nunito`),document.fonts.load(`900 20px Nunito`)])}catch(e){}
+  if(!logoImg.complete)await new Promise(r=>{logoImg.onload=logoImg.onerror=r;setTimeout(r,1500)});
+  const c=$('#ticketCanvas');c.width=W;c.height=5000;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,5000);x.fillStyle='#000';x.strokeStyle='#000';x.textBaseline='top';
+  const font=(w,sz,it)=>{x.font=`${it?'italic ':''}${w} ${Math.round(sz*k)}px ${F}`};
+  const dash=y=>{x.save();x.lineWidth=Math.max(1,Math.round(1.5*k));x.setLineDash([6*k,4*k]);x.beginPath();x.moveTo(P,y);x.lineTo(W-P,y);x.stroke();x.restore()};
+  const rrect=(x0,y0,w,h,r)=>{x.beginPath();x.moveTo(x0+r,y0);x.arcTo(x0+w,y0,x0+w,y0+h,r);x.arcTo(x0+w,y0+h,x0,y0+h,r);x.arcTo(x0,y0+h,x0,y0,r);x.arcTo(x0,y0,x0+w,y0,r);x.closePath()};
+  let y=Math.round(8*k);
+  if(logoImg.naturalWidth){const lw=Math.round(W*0.7),lh=Math.round(lw*logoImg.naturalHeight/logoImg.naturalWidth);x.drawImage(logoImg,Math.round((W-lw)/2),y,lw,lh);y+=lh+Math.round(6*k)}
+  else{font(900,28);x.textAlign='center';x.fillText(S.cfg.nombre||'Mi negocio',W/2,y);y+=Math.round(34*k)}
+  x.textAlign='center';if(S.cfg.direccion){font(700,15);x.fillText(S.cfg.direccion,W/2,y);y+=Math.round(22*k)}
+  const th=Math.round(30*k);rrect(P,y,W-2*P,th,Math.round(9*k));x.fill();x.fillStyle='#fff';font(900,17);x.fillText(titulo,W/2,y+Math.round(5*k));x.fillStyle='#000';y+=th+Math.round(8*k);
+  for(const f of filas){
+    if(f.sep){y+=Math.round(3*k);dash(y);y+=Math.round(8*k);continue}
+    if(f.box){const bh=Math.round(40*k);rrect(P,y,W-2*P,bh,Math.round(10*k));x.fill();x.fillStyle='#fff';font(900,19);x.textAlign='left';x.fillText(f.box[0],P+10*k,y+Math.round(8*k));x.textAlign='right';x.fillText(f.box[1],W-P-10*k,y+Math.round(8*k));x.fillStyle='#000';y+=bh+Math.round(4*k);
+      if(f.nota){font(800,15);x.textAlign='center';x.fillText(f.nota,W/2,y);y+=Math.round(22*k)}continue}
+    const sz=f.b?16:15;font(f.b?900:600,sz);x.textAlign='left';x.fillText(f.l,P,y);font(f.b?900:700,sz);x.textAlign='right';x.fillText(f.r,W-P,y);y+=Math.round((f.b?23:21)*k)}
+  if(firma){y+=Math.round(40*k);x.lineWidth=Math.max(1,Math.round(1.5*k));x.beginPath();x.moveTo(W*0.18,y);x.lineTo(W*0.82,y);x.stroke();font(600,13);x.textAlign='center';x.fillText(firma,W/2,y+3*k);y+=Math.round(24*k)}
+  if(pie){y+=Math.round(4*k);dash(y);y+=Math.round(10*k);font(900,18,true);x.textAlign='center';x.fillText(pie,W/2,y);y+=Math.round(26*k)}
+  y+=Math.round(26*k);const img=x.getImageData(0,0,W,y);c.height=y;x.putImageData(img,0,0)}
+function docCorte(t){const r=t.resumen||{},d=+t.diferencia||0;
+  return ()=>drawDoc({titulo:'CORTE DE CAJA',firma:'Firma de quien entrega',filas:[
+    {l:'Cajero:',r:nombreDe(t.uid)},{l:'Abrió:',r:fechaLarga(t.abierto)},{l:'Cerró:',r:t.cerrado?fechaLarga(t.cerrado):'—'},{sep:1},
+    {l:'Ventas:',r:String(r.nVentas||0)},{l:'Efectivo:',r:money(r.efectivo)},{l:'Tarjeta:',r:money(r.tarjeta)},{l:'Transferencia:',r:money(r.transferencia)},{l:'Fiado:',r:money(r.fiado)},{l:'TOTAL VENDIDO',r:money(r.vendido),b:1},{sep:1},
+    {l:'Fondo inicial:',r:money(t.fondo)},{l:'+ Ventas en efectivo:',r:money(r.efectivo)},{l:'+ Abonos en efectivo:',r:money(r.abonosEf)},{l:'+ Ingresos:',r:money(r.ingresos)},{l:'− Retiros:',r:money(r.retiros)},
+    ...(r.abonosOtros?[{l:'Abonos tarjeta/transf.:',r:money(r.abonosOtros)}]:[]),{sep:1},
+    {l:'DEBE HABER',r:money(t.esperado!=null?t.esperado:r.esperado),b:1},{l:'CONTADO',r:money(t.contado),b:1},
+    {box:['DIFERENCIA',(d>0?'+':d<0?'−':'')+money(Math.abs(d))],nota:Math.abs(d)<0.01?'La caja cuadra':d<0?`Faltan ${money(-d)}`:`Sobran ${money(d)}`}]})}
+function docAbono(c,m,saldo){
+  return ()=>drawDoc({titulo:'COMPROBANTE DE ABONO',pie:S.cfg.mensaje||'¡Gracias!',filas:[
+    {l:'Cliente:',r:c.nombre},{l:'Fecha:',r:fechaLarga(m.ts)},{l:'Recibió:',r:nombreDe(m.uid)},{sep:1},
+    {box:['ABONO',money(m.monto)]},{l:'Pago:',r:m.metodo},{l:'SALDO PENDIENTE',r:money(saldo),b:1}]})}
 function lineasAbono(c,m,saldo){
   const L=encabezado();
   L.push({t:'COMPROBANTE DE ABONO',a:'c',b:1},{sep:1});
@@ -1272,7 +1306,7 @@ $('#abonoForm').addEventListener('submit',async e=>{e.preventDefault();if(S.busy
   S.busy=true;$('#btnAbonoOk').disabled=true;
   const m={clienteId:c.id,tipo:'abono',monto,metodo:S.abonoMetodo,ts:Date.now(),uid:S.uid,turnoId:S.turno.id};
   try{await Store.set('cuenta_movs/'+Store.newId('cuenta_movs'),m);close('#dlgAbono');
-    showTicket(lineasAbono(c,m,r2(debe-monto)),{title:`Abono de ${money(monto)}`,file:`abono-${dayKey(new Date())}-${c.nombre.replace(/\W+/g,'-')}`,nueva:false})}
+    showTicket(docAbono(c,m,r2(debe-monto)),{title:`Abono de ${money(monto)}`,file:`abono-${dayKey(new Date())}-${c.nombre.replace(/\W+/g,'-')}`,nueva:false})}
   catch(ex){err(errMsg(ex))}finally{S.busy=false;$('#btnAbonoOk').disabled=false}});
 
 /* ---------- Turnos y corte ---------- */
@@ -1354,7 +1388,7 @@ $('#corteForm').addEventListener('submit',async e=>{e.preventDefault();if(!S.tur
   S.busy=true;$('#btnCorteOk').disabled=true;
   const fin={estado:'cerrado',cerrado:Date.now(),contado,esperado:r.esperado,diferencia:dif,resumen:r};
   try{await Store.update('turnos/'+t.id,fin);close('#dlgCorte');
-    showTicket(lineasCorte({...t,...fin}),{title:Math.abs(dif)<0.01?'Corte: cuadra':dif<0?`Corte: faltan ${money(-dif)}`:`Corte: sobran ${money(dif)}`,file:`corte-${dayKey(new Date())}-${(S.me?.nombre||'').replace(/\W+/g,'-')}`,nueva:false}).then(()=>{$('#dlgTicket').onclose=()=>{if(FB&&slots.list().length>=2)lockNow()}})}
+    showTicket(docCorte({...t,...fin}),{title:Math.abs(dif)<0.01?'Corte: cuadra':dif<0?`Corte: faltan ${money(-dif)}`:`Corte: sobran ${money(dif)}`,file:`corte-${dayKey(new Date())}-${(S.me?.nombre||'').replace(/\W+/g,'-')}`,nueva:false}).then(()=>{$('#dlgTicket').onclose=()=>{if(FB&&slots.list().length>=2)lockNow()}})}
   catch(ex){toast(errMsg(ex))}finally{S.busy=false;$('#btnCorteOk').disabled=false}});
 function renderTurnos(){
   const list=S.turnos.filter(t=>t.estado==='cerrado').sort((a,b)=>b.cerrado-a.cerrado).slice(0,40);
@@ -1362,7 +1396,7 @@ function renderTurnos(){
     return `<tr class="click" data-id="${esc(t.id)}"><td>${esc(nombreDe(t.uid))}</td><td class="num" style="font-size:13px">${fechaCorta(t.abierto)}</td><td class="num" style="font-size:13px">${fechaCorta(t.cerrado)}</td><td class="r num">${money(t.resumen?.vendido)}</td><td class="r num">${money(t.esperado)}</td><td class="r num">${money(t.contado)}</td><td class="r"><span class="pill ${cls}">${d>0?'+':''}${money(d)}</span></td></tr>`}).join('')
     :`<tr><td colspan="7"><div class="empty" style="border:0">Aquí aparecerán los cortes cuando se cierren turnos.</div></td></tr>`;
 }
-$('#turnosBody').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;const t=S.turnos.find(x=>x.id===tr.dataset.id);if(t)showTicket(lineasCorte(t),{title:'Corte de caja',file:`corte-${dayKey(new Date(t.cerrado))}-${nombreDe(t.uid).replace(/\W+/g,'-')}`,nueva:false})};
+$('#turnosBody').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;const t=S.turnos.find(x=>x.id===tr.dataset.id);if(t)showTicket(docCorte(t),{title:'Corte de caja',file:`corte-${dayKey(new Date(t.cerrado))}-${nombreDe(t.uid).replace(/\W+/g,'-')}`,nueva:false})};
 
 /* ---------- Inventario ---------- */
 function renderInv(){
