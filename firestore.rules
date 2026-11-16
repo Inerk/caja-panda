@@ -65,6 +65,7 @@ service cloud.firestore {
     match /salidas/{id} {
       allow read: if esDueno() || (esCajero() && resource.data.uid == request.auth.uid);
       allow create: if esCajero() && soyYo('uid');
+      allow update: if esDueno();
     }
 
     match /clientes/{id} {

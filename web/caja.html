@@ -580,9 +580,17 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <div class="kv" style="margin-top:10px;font-size:18px"><span>Cambio</span><b class="num" id="cambio">$0.00</b></div>
   </div>
   <div id="salidaBox" hidden style="display:grid;gap:10px">
-    <div class="banner warn" style="margin:0">No es venta: se descuenta del inventario y se registra a costo. No entra dinero a la caja.</div>
+    <div class="banner warn" style="margin:0" id="salAviso"></div>
     <span class="label">¿A dónde va la mercancía?</span>
     <div class="row" id="salDest"></div>
+    <div id="salCobro" style="display:grid;gap:8px">
+      <span class="label">¿Cuánto paga Marleny?</span>
+      <div class="row" id="salPrecio"></div>
+      <input id="salOtro" class="moneyin" type="number" inputmode="decimal" min="0" step="0.5" placeholder="Monto acordado" hidden>
+      <span class="label">¿Cómo paga?</span>
+      <div class="row" id="salPago"></div>
+      <div class="kv" style="font-size:19px"><span>Cobro a Marleny</span><b class="num" id="salMonto">$0.00</b></div>
+    </div>
     <div class="field"><label class="label" for="salNota">Nota (opcional)</label><input id="salNota" maxlength="80" placeholder="Para qué se usa, quién se lo lleva…"></div>
     <div class="kv" style="font-size:17px"><span>Valor a costo</span><b class="num" id="salCosto">$0.00</b></div>
     <div class="muted" id="salSinCosto" style="font-size:13px" hidden></div>
@@ -796,6 +804,7 @@ const S = {uid:null,isOwner:false,me:null,dl:null,started:false,
   metodo:'Efectivo',fiaCli:null,abonoMetodo:'Efectivo',efTipo:'retiro',
   lowOnly:false,soloDeben:true,busy:false,unsub:{},tab:'vender'};
 
+const esDuenoYo=()=>!!(S.isOwner||(S.me&&S.me.rol==='dueno'));
 const can = p => !!(S.me && ROLES[S.me.rol] && ROLES[S.me.rol].p.includes(p));
 const nombreDe = uid => (S.usrById.get(uid)||{}).nombre || 'Alguien';
 
@@ -1019,29 +1028,50 @@ function mkFolio(d){const yy=String(d.getFullYear()).slice(2);return `${yy}${pad
 /* ---------- Salidas internas (Marleny, consumo propio, merma) ---------- */
 const DESTINOS=['Marleny','Consumo propio','Merma o caducado'];
 S.salDest=DESTINOS[0];
+const COBRA='Marleny';
+const SAL_PRECIOS=[['costo','A costo'],['venta','Precio de venta'],['otro','Otro monto']],SAL_PAGOS=['Efectivo','Transferencia','Pendiente'];
+const lsGet=(k,d)=>{try{return localStorage.getItem(k)||d}catch(e){return d}},lsSet=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+S.salPrecio=lsGet('sal-precio','costo');S.salPago=lsGet('sal-pago','Efectivo');
+function salMontoCobro(){const c=r2(S.cart.reduce((a,i)=>a+salCostoDe(i)*i.cant,0)),v=r2(S.cart.reduce((a,i)=>a+i.precio*i.cant,0));
+  return S.salPrecio==='venta'?v:S.salPrecio==='otro'?r2(+$('#salOtro').value||0):c}
 function salCostoDe(it){const p=S.byId.get(it.pid);return +(p&&p.costo)||+it.costo||0}
 function renderSalida(){
   $('#salDest').innerHTML=DESTINOS.map(d=>`<button type="button" class="chip" data-d="${esc(d)}" aria-pressed="${d===S.salDest}">${esc(d)}</button>`).join('');
   const c=r2(S.cart.reduce((a,i)=>a+salCostoDe(i)*i.cant,0));$('#salCosto').textContent=money(c);
   const sin=S.cart.filter(i=>!salCostoDe(i)).length;$('#salSinCosto').hidden=!sin;
+  const cobra=S.salDest===COBRA;$('#salCobro').hidden=!cobra;
+  $('#salAviso').textContent=cobra?'Marleny sí paga, pero no cuenta como venta de mostrador: se descuenta del inventario y se reporta aparte.':'No es venta: se descuenta del inventario y se registra a costo. No entra dinero a la caja.';
+  if(cobra){$('#salPrecio').innerHTML=SAL_PRECIOS.map(([k,l])=>`<button type="button" class="chip" data-k="${k}" aria-pressed="${k===S.salPrecio}">${l}</button>`).join('');
+    $('#salPago').innerHTML=SAL_PAGOS.map(m=>`<button type="button" class="chip" data-m="${m}" aria-pressed="${m===S.salPago}">${m}</button>`).join('');
+    $('#salOtro').hidden=S.salPrecio!=='otro';$('#salMonto').textContent=money(salMontoCobro())}
   $('#salSinCosto').textContent=sin?`${sin} producto${sin===1?'':'s'} sin costo capturado: cuentan como $0. Captura su costo en Inventario para que el valor sea real.`:''}
 $('#salDest').onclick=e=>{const b=e.target.closest('button[data-d]');if(b){S.salDest=b.dataset.d;renderSalida()}};
+$('#salPrecio').onclick=e=>{const b=e.target.closest('button[data-k]');if(b){S.salPrecio=b.dataset.k;lsSet('sal-precio',S.salPrecio);renderSalida();if(S.salPrecio==='otro')$('#salOtro').focus()}};
+$('#salPago').onclick=e=>{const b=e.target.closest('button[data-m]');if(b){S.salPago=b.dataset.m;lsSet('sal-pago',S.salPago);renderSalida()}};
+$('#salOtro').oninput=()=>$('#salMonto').textContent=money(salMontoCobro());
 async function registrarSalida(){
-  if(S.busy)return;S.busy=true;$('#btnConfirmar').disabled=true;$('#btnConfirmar').textContent='Guardando…';
+  if(S.busy)return;
+  let cobro=null;
+  if(S.salDest===COBRA){const monto=salMontoCobro();
+    if(S.salPrecio==='otro'&&!(monto>0)){toast('Escribe el monto que paga Marleny');return}
+    if(S.salPago==='Efectivo'&&!S.turno){toast('Para recibir efectivo primero abre turno (o elige Transferencia o Pendiente)');return}
+    cobro={monto,metodo:S.salPago,base:S.salPrecio,pagado:S.salPago!=='Pendiente'}}S.busy=true;$('#btnConfirmar').disabled=true;$('#btnConfirmar').textContent='Guardando…';
   const now=new Date();const folio='S'+mkFolio(now);
   const items=S.cart.map(i=>{const costo=salCostoDe(i);return{pid:i.pid,codigo:i.codigo,nombre:i.nombre,precio:i.precio,costo,cant:i.cant,subtotal:r2(costo*i.cant)}});
   const sal={folio,ts:now.getTime(),dia:dayKey(now),hora:hora(now),items,destino:S.salDest,nota:$('#salNota').value.trim(),
-    articulos:items.reduce((a,i)=>a+i.cant,0),costoTotal:r2(items.reduce((a,i)=>a+i.subtotal,0)),precioTotal:r2(items.reduce((a,i)=>a+i.precio*i.cant,0)),uid:S.uid,turnoId:S.turno?S.turno.id:null};
+    articulos:items.reduce((a,i)=>a+i.cant,0),costoTotal:r2(items.reduce((a,i)=>a+i.subtotal,0)),precioTotal:r2(items.reduce((a,i)=>a+i.precio*i.cant,0)),uid:S.uid,turnoId:S.turno?S.turno.id:null,cobro,pendiente:!!(cobro&&!cobro.pagado)};
   try{await Store.set('salidas/'+folio,sal)}catch(err){toast('No se guardó la salida: '+errMsg(err));S.busy=false;$('#btnConfirmar').disabled=false;setMetodo('Salida');return}
   const fallos=[];for(const it of items){try{await Store.incr('productos/'+it.pid,'stock',-it.cant,{actualizado:now.getTime()})}catch(e){fallos.push(it.nombre)}}
   if(fallos.length)toast('Salida guardada, pero no se descontó existencia de: '+fallos.join(', '));
-  S.cart=[];renderCart();close('#dlgCobro');S.busy=false;$('#btnConfirmar').disabled=false;$('#salNota').value='';setMetodo('Efectivo');
+  S.cart=[];renderCart();close('#dlgCobro');S.busy=false;$('#btnConfirmar').disabled=false;$('#salNota').value='';$('#salOtro').value='';setMetodo('Efectivo');
   showTicket(docSalida(sal),{title:`Salida a ${sal.destino}`,file:'salida-'+folio,nueva:false})}
 function docSalida(x){const corta=t=>{t=String(t);return t.length>24?t.slice(0,23)+'…':t};
   return ()=>drawDoc({titulo:'VALE DE SALIDA',firma:'Firma de quien recibe',filas:[
     {l:'Destino:',r:x.destino},{l:'Fecha:',r:fechaLarga(x.ts)},{l:'Entregó:',r:nombreDe(x.uid)},{l:'Folio:',r:x.folio},...(x.nota?[{l:'Nota:',r:corta(x.nota)}]:[]),{sep:1},
     ...x.items.map(i=>({l:`${i.cant} ${corta(i.nombre)}`,r:money(i.subtotal)})),{sep:1},
-    {box:['A COSTO',money(x.costoTotal)],nota:`A precio de venta: ${money(x.precioTotal)} · No es venta`}]})}
+    ...(x.cobro?[{l:'Valor a costo:',r:money(x.costoTotal)},{l:'Precio de venta:',r:money(x.precioTotal)},
+      {box:[x.cobro.pagado?'PAGÓ':'POR PAGAR',money(x.cobro.monto)],nota:x.cobro.pagado?`Pago: ${x.cobro.metodo}${x.cobro.pagadoTs&&x.cobro.metodo!==x.cobro.metodoOrig?' · '+fechaCorta(x.cobro.pagadoTs):''} · No es venta de mostrador`:'Pendiente de pago · No es venta de mostrador'}]
+    :[{box:['A COSTO',money(x.costoTotal)],nota:`A precio de venta: ${money(x.precioTotal)} · No es venta`}])]})}
 
 async function cobrar(){
   if(S.metodo==='Salida'){if(!S.cart.length)return;return registrarSalida()}
@@ -1177,7 +1207,7 @@ function docCorte(t){const r=t.resumen||{},d=+t.diferencia||0;
   return ()=>drawDoc({titulo:'CORTE DE CAJA',firma:'Firma de quien entrega',filas:[
     {l:'Cajero:',r:nombreDe(t.uid)},{l:'Abrió:',r:fechaLarga(t.abierto)},{l:'Cerró:',r:t.cerrado?fechaLarga(t.cerrado):'—'},{sep:1},
     {l:'Ventas:',r:String(r.nVentas||0)},{l:'Efectivo:',r:money(r.efectivo)},{l:'Tarjeta:',r:money(r.tarjeta)},{l:'Transferencia:',r:money(r.transferencia)},{l:'Fiado:',r:money(r.fiado)},{l:'TOTAL VENDIDO',r:money(r.vendido),b:1},{sep:1},
-    {l:'Fondo inicial:',r:money(t.fondo)},{l:'+ Ventas en efectivo:',r:money(r.efectivo)},{l:'+ Abonos en efectivo:',r:money(r.abonosEf)},{l:'+ Ingresos:',r:money(r.ingresos)},{l:'− Retiros:',r:money(r.retiros)},
+    {l:'Fondo inicial:',r:money(t.fondo)},{l:'+ Ventas en efectivo:',r:money(r.efectivo)},{l:'+ Abonos en efectivo:',r:money(r.abonosEf)},...(r.marlenyEf?[{l:'+ Cobro Marleny efectivo:',r:money(r.marlenyEf)}]:[]),{l:'+ Ingresos:',r:money(r.ingresos)},{l:'− Retiros:',r:money(r.retiros)},
     ...(r.abonosOtros?[{l:'Abonos tarjeta/transf.:',r:money(r.abonosOtros)}]:[]),{sep:1},
     {l:'DEBE HABER',r:money(t.esperado!=null?t.esperado:r.esperado),b:1},{l:'CONTADO',r:money(t.contado),b:1},
     {box:['DIFERENCIA',(d>0?'+':d<0?'−':'')+money(Math.abs(d))],nota:Math.abs(d)<0.01?'La caja cuadra':d<0?`Faltan ${money(-d)}`:`Sobran ${money(d)}`}]})}
@@ -1197,7 +1227,7 @@ function lineasCorte(t){
   L.push({t:'CORTE DE CAJA',a:'c',b:1},{sep:1});
   L.push({l:'Cajero:',r:nombreDe(t.uid)},{l:'Abrió:',r:fechaLarga(t.abierto)},{l:'Cerró:',r:t.cerrado?fechaLarga(t.cerrado):'—'},{sep:1});
   L.push({l:'Ventas:',r:String(r.nVentas||0)},{l:'Efectivo:',r:money(r.efectivo)},{l:'Tarjeta:',r:money(r.tarjeta)},{l:'Transferencia:',r:money(r.transferencia)},{l:'Fiado:',r:money(r.fiado)},{l:'TOTAL VENDIDO',r:money(r.vendido),b:1},{sep:1});
-  L.push({l:'Fondo inicial:',r:money(t.fondo)},{l:'+ Ventas efectivo:',r:money(r.efectivo)},{l:'+ Abonos efectivo:',r:money(r.abonosEf)},{l:'+ Ingresos:',r:money(r.ingresos)},{l:'- Retiros:',r:money(r.retiros)},{l:'DEBE HABER',r:money(r.esperado),b:1},{l:'CONTADO',r:money(t.contado),b:1},{l:'DIFERENCIA',r:(t.diferencia>0?'+':'')+money(t.diferencia),b:1},{sep:1});
+  L.push({l:'Fondo inicial:',r:money(t.fondo)},{l:'+ Ventas efectivo:',r:money(r.efectivo)},{l:'+ Abonos efectivo:',r:money(r.abonosEf)},...(r.marlenyEf?[{l:'+ Cobro Marleny ef.:',r:money(r.marlenyEf)}]:[]),{l:'+ Ingresos:',r:money(r.ingresos)},{l:'- Retiros:',r:money(r.retiros)},{l:'DEBE HABER',r:money(r.esperado),b:1},{l:'CONTADO',r:money(t.contado),b:1},{l:'DIFERENCIA',r:(t.diferencia>0?'+':'')+money(t.diferencia),b:1},{sep:1});
   if(r.abonosOtros) L.push({l:'Abonos tarjeta/transf.:',r:money(r.abonosOtros)});
   L.push({t:' '},{t:'Firma: ____________________',a:'c'});
   return L}
@@ -1343,8 +1373,10 @@ function resumenTurno(t){
   const r={nVentas:ventas.length,efectivo:by('Efectivo'),tarjeta:by('Tarjeta'),transferencia:by('Transferencia'),fiado:by('Fiado'),
     abonosEf:sum(abonos.filter(a=>a.metodo==='Efectivo'),a=>a.monto),abonosOtros:sum(abonos.filter(a=>a.metodo!=='Efectivo'),a=>a.monto),
     retiros:sum(movs.filter(m=>m.tipo==='retiro'),m=>m.monto),ingresos:sum(movs.filter(m=>m.tipo==='ingreso'),m=>m.monto)};
+  const sc=(S.turnoSalidas||[]).filter(x=>x.cobro&&x.cobro.pagado&&x.turnoId===t.id);
+  r.marlenyEf=sum(sc.filter(x=>x.cobro.metodo==='Efectivo'),x=>x.cobro.monto);r.marlenyOtros=sum(sc.filter(x=>x.cobro.metodo!=='Efectivo'),x=>x.cobro.monto);
   r.vendido=r2(r.efectivo+r.tarjeta+r.transferencia+r.fiado);
-  r.esperado=r2((+t.fondo||0)+r.efectivo+r.abonosEf+r.ingresos-r.retiros);
+  r.esperado=r2((+t.fondo||0)+r.efectivo+r.abonosEf+r.marlenyEf+r.ingresos-r.retiros);
   return r}
 function renderTurno(){
   const t=S.turno;
@@ -1361,7 +1393,8 @@ function renderTurno(){
     <div class="tile"><div class="label">Tarjeta</div><div class="v">${money(r.tarjeta)}</div></div>
     <div class="tile"><div class="label">Transferencia</div><div class="v">${money(r.transferencia)}</div></div>
     <div class="tile"><div class="label">Fiado</div><div class="v">${money(r.fiado)}</div></div>
-    <div class="tile"><div class="label">Abonos cobrados</div><div class="v">${money(r.abonosEf+r.abonosOtros)}</div></div>`;
+    <div class="tile"><div class="label">Abonos cobrados</div><div class="v">${money(r.abonosEf+r.abonosOtros)}</div></div>${r.marlenyEf+r.marlenyOtros?`
+    <div class="tile"><div class="label">Cobrado a Marleny (aparte)</div><div class="v">${money(r.marlenyEf+r.marlenyOtros)}</div></div>`:''}`;
   const movs=(t.movs||[]).slice().sort((a,b)=>b.ts-a.ts);
   $('#turnoMovs').innerHTML=`<div><span><b>Fondo inicial</b><br><span class="muted" style="font-size:12px">${fechaCorta(t.abierto)}</span></span><span class="num">+${money(t.fondo)}</span></div>`+
     movs.map(m=>`<div><span><b>${m.tipo==='retiro'?'Retiro':'Ingreso'}</b> · ${esc(m.nota)}<br><span class="muted" style="font-size:12px">${fechaCorta(m.ts)}</span></span><span class="num" style="color:${m.tipo==='retiro'?'var(--bad)':'var(--ok)'}">${m.tipo==='retiro'?'−':'+'}${money(m.monto)}</span></div>`).reverse().join('');
@@ -1531,13 +1564,26 @@ $('#impGo').onclick=async()=>{if(!can('inv_editar')||S.busy||!impRows.length)ret
 $('#chipSinPrecio').onclick=()=>{S.sinPrecio=!S.sinPrecio;$('#chipSinPrecio').setAttribute('aria-pressed',String(!!S.sinPrecio));renderInv()};
 
 /* ---------- Ventas (dueño) ---------- */
-function salTiles(){const L=S.salidasDia||[];if(!L.length)return'';const by={};for(const x of L){by[x.destino]=r2((by[x.destino]||0)+(+x.costoTotal||0))}
-  return Object.entries(by).map(([d,c])=>`<div class="tile" data-saldest="${esc(d)}" style="cursor:pointer"><div class="label">Salida a ${esc(d)} (a costo)</div><div class="v">${money(c)}</div></div>`).join('')}
+function salTiles(){const L=S.salidasDia||[];const by={};for(const x of L){if(x.destino!==COBRA)by[x.destino]=r2((by[x.destino]||0)+(+x.costoTotal||0))}
+  const M=L.filter(x=>x.destino===COBRA),cob=sum(M.filter(x=>x.cobro&&x.cobro.pagado),x=>x.cobro.monto),pend=sum(S.salPend||[],x=>x.cobro?x.cobro.monto:0),mc=sum(M,x=>+x.costoTotal||0);
+  return (M.length?`<div class="tile" data-saldest="${COBRA}" style="cursor:pointer"><div class="label">Marleny · cobrado (aparte)</div><div class="v">${money(cob)}</div><div class="muted" style="font-size:12px">costo ${money(mc)}${M.length&&cob>mc?` · margen ${money(cob-mc)}`:''}</div></div>`:'')+
+    ((S.salPend||[]).length?`<div class="tile" data-salpend style="cursor:pointer"><div class="label">Marleny te debe</div><div class="v" style="color:var(--bad)">${money(pend)}</div></div>`:'')+
+    Object.entries(by).map(([d,c])=>`<div class="tile" data-saldest="${esc(d)}" style="cursor:pointer"><div class="label">Salida a ${esc(d)} (a costo)</div><div class="v">${money(c)}</div></div>`).join('')}
+const salRow=x=>`<div data-salf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(x.dia===S.dia?x.hora:fechaCorta(x.ts))}</b> · ${x.articulos} art. · ${esc(nombreDe(x.uid))}${x.cobro?` · ${x.cobro.pagado?esc(x.cobro.metodo):'<b style="color:var(--bad)">Pendiente</b>'}`:''}${x.nota?`<br><span class="muted" style="font-size:12px">${esc(x.nota)}</span>`:''}</span><span class="num">${money(x.cobro?x.cobro.monto:x.costoTotal)}${x.pendiente&&esDuenoYo()?` <button type="button" class="btn ghost" data-salpaga="${esc(x.folio)}" style="padding:4px 10px;font-size:13px">Ya pagó</button>`:''}</span></div>`;
+document.addEventListener('click',e=>{if(!e.target.closest('[data-salpend]'))return;const L=(S.salPend||[]).slice().sort((a,b)=>b.ts-a.ts);
+  $('#vtTitle').textContent=`Marleny te debe ${money(sum(L,x=>x.cobro.monto))}`;
+  $('#vtBody').innerHTML=`<div class="list">${L.map(salRow).join('')}</div>`;$('#vtFooter').innerHTML='<button class="btn" data-close>Cerrar</button>';open('#dlgVenta')});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-salpaga]');if(!b)return;e.stopPropagation();const x=[...(S.salPend||[]),...(S.salidasDia||[])].find(y=>y.folio===b.dataset.salpaga);if(!x)return;
+  $('#vtTitle').textContent=`¿Cómo pagó Marleny ${money(x.cobro.monto)}?`;
+  $('#vtBody').innerHTML=`<p class="muted">Vale ${esc(x.folio)} del ${esc(fechaCorta(x.ts))}. El pago se registra aparte; no se suma a las ventas ni al corte de caja.</p>`;
+  $('#vtFooter').innerHTML=`<button class="btn" data-close>Cancelar</button><button class="btn" data-salpm="Efectivo (fuera de caja)" data-fol="${esc(x.folio)}">Efectivo</button><button class="btn primary" data-salpm="Transferencia" data-fol="${esc(x.folio)}">Transferencia</button>`;open('#dlgVenta')},true);
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-salpm]');if(!b)return;const x=[...(S.salPend||[]),...(S.salidasDia||[])].find(y=>y.folio===b.dataset.fol);if(!x)return;b.disabled=true;
+  try{await Store.update('salidas/'+x.folio,{pendiente:false,cobro:{...x.cobro,pagado:true,metodoOrig:'Pendiente',metodo:b.dataset.salpm,pagadoTs:Date.now(),pagadoPor:S.uid}});toast('Marcado como pagado');close('#dlgVenta')}catch(ex){toast(errMsg(ex));b.disabled=false}});
 document.addEventListener('click',e=>{const t=e.target.closest('[data-saldest]');if(!t)return;const d=t.dataset.saldest;const L=(S.salidasDia||[]).filter(x=>x.destino===d).sort((a,b)=>b.ts-a.ts);
-  $('#vtTitle').textContent=`Salidas a ${d}`;
-  $('#vtBody').innerHTML=`<div class="list">${L.map(x=>`<div data-salf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(x.hora)}</b> · ${x.articulos} art. · ${esc(nombreDe(x.uid))}${x.nota?`<br><span class="muted" style="font-size:12px">${esc(x.nota)}</span>`:''}</span><span class="num">${money(x.costoTotal)}</span></div>`).join('')}</div>`;
+  $('#vtTitle').textContent=d===COBRA?'Mercancía para Marleny':`Salidas a ${d}`;
+  $('#vtBody').innerHTML=`<div class="list">${L.map(salRow).join('')}</div>`;
   $('#vtFooter').innerHTML='<button class="btn" data-close>Cerrar</button>';open('#dlgVenta')});
-document.addEventListener('click',e=>{const r=e.target.closest('[data-salf]');if(!r)return;const x=(S.salidasDia||[]).find(y=>y.folio===r.dataset.salf);if(!x)return;close('#dlgVenta');showTicket(docSalida(x),{title:`Salida a ${x.destino}`,file:'salida-'+x.folio,nueva:false})});
+document.addEventListener('click',e=>{const r=e.target.closest('[data-salf]');if(!r)return;if(e.target.closest('[data-salpaga]'))return;const x=[...(S.salidasDia||[]),...(S.salPend||[])].find(y=>y.folio===r.dataset.salf);if(!x)return;close('#dlgVenta');showTicket(docSalida(x),{title:`Salida a ${x.destino}`,file:'salida-'+x.folio,nueva:false})});
 function renderVentas(){
   const v=S.ventasDia.slice().sort((a,b)=>b.ts-a.ts);const ok=v.filter(x=>x.estado!=='cancelada');
   const tot=sum(ok,x=>x.total),gan=sum(ok,x=>x.total-(x.costoTotal||0));
@@ -1576,6 +1622,7 @@ async function cancelarVenta(v){
 function subVentasDia(){
   if(S.unsub.dia)S.unsub.dia();if(S.unsub.sal)S.unsub.sal();
   S.unsub.sal=Store.watch('salidas',{where:[['dia','==',S.dia]]},l=>{S.salidasDia=l;renderVentas()},()=>{});
+  if(!S.unsub.salp&&esDuenoYo())S.unsub.salp=Store.watch('salidas',{where:[['pendiente','==',true]]},l=>{S.salPend=l;renderVentas()},()=>{});
   S.unsub.dia=Store.watch('ventas',{where:[['dia','==',S.dia]]},l=>{S.ventasDia=l;renderVentas()},e=>toast('Ventas: '+errMsg(e)));
 }
 $('#dia').value=S.dia;$('#dia').onchange=e=>{if(!e.target.value)return;S.dia=e.target.value;if(Store.db&&can('ventas'))subVentasDia()};
@@ -1618,7 +1665,8 @@ function startData(){
   if(can('fiado')){Store.watch('clientes',{},setClientes);Store.watch('cuenta_movs',{},setCmovs)}
   if(can('turno'))Store.watch('turnos',{where:[['uid','==',S.uid],['estado','==','abierto']]},l=>{
     const t=l.sort((a,b)=>b.abierto-a.abierto)[0]||null;const changed=(t&&t.id)!==(S.turno&&S.turno.id);S.turno=t;
-    if(changed){if(S.unsub.tv)S.unsub.tv();S.turnoVentas=[];if(t)S.unsub.tv=Store.watch('ventas',{where:[['turnoId','==',t.id],['uid','==',S.uid]]},v=>{S.turnoVentas=v;renderTurno()})}
+    if(changed){if(S.unsub.tv)S.unsub.tv();S.turnoVentas=[];if(t)S.unsub.tv=Store.watch('ventas',{where:[['turnoId','==',t.id],['uid','==',S.uid]]},v=>{S.turnoVentas=v;renderTurno()});
+      if(S.unsub.ts)S.unsub.ts();S.turnoSalidas=[];if(t)S.unsub.ts=Store.watch('salidas',{where:[['turnoId','==',t.id],['uid','==',S.uid]]},v=>{S.turnoSalidas=v;renderTurno()},()=>{})}
     renderTurno()});
   if(can('turno'))Store.watch('turnos',{where:can('ventas')?[['estado','==','cerrado']]:[['uid','==',S.uid],['estado','==','cerrado']]},l=>{S.turnos=can('ventas')?l:l.filter(t=>t.uid===S.uid);renderTurnos()});
   if(can('ventas'))subVentasDia();
