@@ -1045,7 +1045,7 @@ async function cobrar(){
   if(fallos.length) toast('Venta guardada, pero no se descontó existencia de: '+fallos.join(', '));
   S.cart=[];renderCart();close('#dlgCobro');S.busy=false;resetCobrarBtn();
   const saldo=cliente?r2((S.saldos.get(cliente.id)||0)+total):null;
-  showTicket(lineasVenta(venta,saldo),{title:venta.metodo==='Efectivo'&&cambio>0?`Cambio: ${money(cambio)}`:'Venta registrada',file:`ticket-${folio}`,nueva:true,drawer:venta.metodo==='Efectivo'});
+  showTicket(()=>drawVenta(venta,saldo),{title:venta.metodo==='Efectivo'&&cambio>0?`Cambio: ${money(cambio)}`:'Venta registrada',file:`ticket-${folio}`,nueva:true,drawer:venta.metodo==='Efectivo'});
 }
 function resetCobrarBtn(){$('#btnConfirmar').disabled=false;$('#btnConfirmar').textContent='Confirmar venta'}
 
@@ -1069,6 +1069,63 @@ function lineasVenta(v,saldo){
   if(v.metodo==='Fiado') L.push({t:'Firma: ____________________',a:'c'},{t:' '});
   if(S.cfg.mensaje) L.push({t:S.cfg.mensaje,a:'c',wrap:1});
   return L}
+/* Ticket de venta con diseño (logo, tabla, total en recuadro) */
+const logoImg=new Image();logoImg.src='img/logo-ticket.png';
+async function drawVenta(v,saldo){
+  const W=S.cfg.ancho==='80'?576:384,k=W/384,P=Math.round(6*k),F='Nunito, system-ui, sans-serif';
+  try{await Promise.all([document.fonts.load(`800 20px Nunito`),document.fonts.load(`600 20px Nunito`),document.fonts.load(`900 20px Nunito`)])}catch(e){}
+  if(!logoImg.complete)await new Promise(r=>{logoImg.onload=logoImg.onerror=r;setTimeout(r,1500)});
+  const c=$('#ticketCanvas');c.width=W;c.height=6000;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,W,6000);x.fillStyle='#000';x.strokeStyle='#000';x.textBaseline='top';
+  const font=(w,sz,it)=>{x.font=`${it?'italic ':''}${w} ${Math.round(sz*k)}px ${F}`};
+  const wrap=(t,maxW)=>{const out=[];let ln='';for(const wd of String(t).split(/\s+/)){const tt=(ln+' '+wd).trim();if(x.measureText(tt).width>maxW&&ln){out.push(ln);ln=wd}else ln=tt}if(ln)out.push(ln);return out};
+  const dash=y=>{x.save();x.lineWidth=Math.max(1,Math.round(1.5*k));x.setLineDash([6*k,4*k]);x.beginPath();x.moveTo(P,y);x.lineTo(W-P,y);x.stroke();x.restore()};
+  const rrect=(x0,y0,w,h,r)=>{x.beginPath();x.moveTo(x0+r,y0);x.arcTo(x0+w,y0,x0+w,y0+h,r);x.arcTo(x0+w,y0+h,x0,y0+h,r);x.arcTo(x0,y0+h,x0,y0,r);x.arcTo(x0,y0,x0+w,y0,r);x.closePath()};
+  let y=Math.round(8*k);
+  // encabezado
+  if(logoImg.naturalWidth){const lw=Math.round(W*0.84),lh=Math.round(lw*logoImg.naturalHeight/logoImg.naturalWidth);x.imageSmoothingEnabled=true;x.drawImage(logoImg,Math.round((W-lw)/2),y,lw,lh);y+=lh+Math.round(8*k)}
+  else{font(900,30);x.textAlign='center';for(const l of wrap(S.cfg.nombre||'Mi negocio',W-2*P)){x.fillText(l,W/2,y);y+=Math.round(34*k)}}
+  x.textAlign='center';
+  if(S.cfg.direccion){font(700,17);const ls=wrap(S.cfg.direccion,W-2*P-26*k);ls.forEach((l,i)=>{const tw=x.measureText(l).width;
+      if(i===0){const px=W/2-tw/2-14*k,py=y+9*k;x.beginPath();x.arc(px,py,7*k,Math.PI,0);x.lineTo(px,py+12*k);x.closePath();x.fill();x.fillStyle='#fff';x.beginPath();x.arc(px,py,2.6*k,0,7);x.fill();x.fillStyle='#000'}
+      x.fillText(l,W/2+(i===0?6*k:0),y);y+=Math.round(22*k)})}
+  font(600,14);[S.cfg.telefono&&('Tel. '+S.cfg.telefono),S.cfg.rfc&&('RFC '+S.cfg.rfc)].filter(Boolean).forEach(t=>{x.fillText(t,W/2,y);y+=Math.round(18*k)});
+  y+=Math.round(4*k);dash(y);y+=Math.round(8*k);
+  // datos de la venta
+  x.textAlign='left';
+  const kv=(lab,val)=>{font(800,15);x.fillText(lab,P,y);const lw=Math.round(92*k);font(600,15);for(const l of wrap(val,W-2*P-lw)){x.fillText(l,P+lw,y);y+=Math.round(20*k)}};
+  kv('Folio:',v.folio);kv('Fecha:',fechaLarga(v.ts));kv('Le atendió:',nombreDe(v.uid||v.vendedor));if(v.clienteNombre)kv('Cliente:',v.clienteNombre);
+  y+=Math.round(4*k);dash(y);y+=Math.round(8*k);
+  // tabla
+  const cQ=Math.round(42*k),xI=W-P-Math.round(2*k),wI=Math.round(76*k),xU=xI-wI,wU=Math.round(68*k),xD=P+cQ,wD=xU-wU-xD-Math.round(4*k);
+  const hh=Math.round(26*k);rrect(P,y,W-2*P,hh,Math.round(8*k));x.fill();x.fillStyle='#fff';font(800,13);const ty=y+Math.round(6*k);
+  x.textAlign='center';x.fillText('Cant.',P+cQ/2,ty);x.textAlign='left';x.fillText('Descripción',xD,ty);x.textAlign='right';x.fillText('P. Unit.',xU,ty);x.fillText('Importe',xI-4*k,ty);x.fillStyle='#000';y+=hh+Math.round(5*k);
+  for(const i of v.items){font(700,15);const ls=wrap(i.nombre,wD);const y0=y;x.textAlign='left';for(const l of ls){x.fillText(l,xD,y);y+=Math.round(19*k)}
+    x.textAlign='center';font(800,15);x.fillText(String(i.cant),P+cQ/2,y0);x.textAlign='right';font(600,14);x.fillText(money(i.precio),xU,y0);font(800,14);x.fillText(money(i.subtotal),xI,y0);y+=Math.round(4*k)}
+  y+=Math.round(2*k);dash(y);y+=Math.round(9*k);
+  // artículos y total
+  font(900,22);const tt='TOTAL: '+money(v.total);const bw=Math.min(W-2*P,Math.round(x.measureText(tt).width+22*k)),bh=Math.round(38*k);
+  const artTxt='Artículos: '+v.articulos;font(800,15);const aw=x.measureText(artTxt).width;
+  const same=aw+bw+10*k<=W-2*P;
+  x.textAlign='left';font(800,15);x.fillText(artTxt,P,same?y+Math.round(10*k):y);if(!same)y+=Math.round(24*k);
+  rrect(W-P-bw,y,bw,bh,Math.round(10*k));x.fill();x.fillStyle='#fff';font(900,22);x.textAlign='center';x.fillText(tt,W-P-bw/2,y+Math.round(6*k));x.fillStyle='#000';y+=bh+Math.round(9*k);
+  dash(y);y+=Math.round(8*k);
+  // pago + QR del folio
+  const pays=[['Pago:',v.metodo]];if(v.metodo==='Efectivo'){pays.push(['Recibido:',money(v.recibido)],['Cambio:',money(v.cambio)])}
+  if(v.metodo==='Fiado'&&saldo!=null)pays.push(['Saldo:',money(saldo)]);
+  let qs=0;const y0=y;
+  if(typeof qrcode==='function'){try{const q=qrcode(0,'M');q.addData(String(v.folio));q.make();const n=q.getModuleCount(),cell=Math.max(2,Math.floor(96*k/n));qs=cell*n;const ox=W-P-qs;
+    for(let r=0;r<n;r++)for(let cc=0;cc<n;cc++)if(q.isDark(r,cc))x.fillRect(ox+cc*cell,y0+r*cell,cell,cell)}catch(e){qs=0}}
+  x.textAlign='left';for(const [a,b] of pays){font(800,16);x.fillText(a,P,y);font(600,16);x.fillText(b,P+Math.round(88*k),y);y+=Math.round(23*k)}
+  y=Math.max(y,y0+qs)+Math.round(8*k);
+  if(v.metodo==='Fiado'){y+=Math.round(26*k);x.lineWidth=Math.max(1,Math.round(1.5*k));x.beginPath();x.moveTo(W*0.2,y);x.lineTo(W*0.8,y);x.stroke();font(600,13);x.textAlign='center';x.fillText('Firma del cliente',W/2,y+3*k);y+=Math.round(24*k)}
+  if(v.estado==='cancelada'){font(900,20);x.textAlign='center';x.fillText('*** VENTA CANCELADA ***',W/2,y);y+=Math.round(28*k)}
+  dash(y);y+=Math.round(10*k);
+  // despedida
+  const msg=S.cfg.mensaje||'¡Gracias por su compra!';font(900,20,true);x.textAlign='center';const ml=wrap(msg,W-2*P-56*k);const mw=Math.max(...ml.map(l=>x.measureText(l).width));const my=y+Math.round(10*k);
+  x.lineWidth=Math.max(2,Math.round(2.5*k));x.lineCap='round';for(const sgn of [-1,1]){const bx=W/2+sgn*(mw/2+10*k);[[-9,0],[-4,-9],[-4,9]].forEach(([dy,dx],j)=>{const yy=my+dy*k+(j?(j===1?0:0):0);x.beginPath();x.moveTo(bx,my+(j===0?0:(j===1?-8:8))*k);x.lineTo(bx+sgn*14*k,my+(j===0?0:(j===1?-14:14))*k);x.stroke()})}
+  for(const l of ml){x.fillText(l,W/2,y);y+=Math.round(25*k)}
+  y+=Math.round(4*k);x.lineWidth=Math.max(3,Math.round(4*k));x.beginPath();x.moveTo(W*0.3,y+8*k);x.quadraticCurveTo(W/2,y-4*k,W*0.7,y+2*k);x.stroke();y+=Math.round(34*k);
+  const img=x.getImageData(0,0,W,y);c.height=y;x.putImageData(img,0,0)}
 function lineasAbono(c,m,saldo){
   const L=encabezado();
   L.push({t:'COMPROBANTE DE ABONO',a:'c',b:1},{sep:1});
@@ -1436,7 +1493,7 @@ function openVenta(v){
     <div class="list">${v.items.map(i=>`<div><span>${i.cant} × ${esc(i.nombre)}</span><span class="num">${money(i.subtotal)}</span></div>`).join('')}
     <div><b>Total</b><b class="num">${money(v.total)}</b></div></div>`;
   $('#vtFooter').innerHTML=`${v.estado!=='cancelada'&&can('cancelar')?'<button class="btn danger" id="btnCancelVenta">Cancelar venta</button><span style="flex:1"></span>':''}<button class="btn" id="btnReprint">Ver ticket</button>`;
-  $('#btnReprint').onclick=()=>{close('#dlgVenta');showTicket(lineasVenta(v,null),{title:`Ticket ${v.folio}`,file:`ticket-${v.folio}`,nueva:false})};
+  $('#btnReprint').onclick=()=>{close('#dlgVenta');showTicket(()=>drawVenta(v,null),{title:`Ticket ${v.folio}`,file:`ticket-${v.folio}`,nueva:false})};
   const cb=$('#btnCancelVenta');if(cb)cb.onclick=()=>cancelarVenta(v);
   open('#dlgVenta');
 }
