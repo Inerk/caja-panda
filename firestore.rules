@@ -61,6 +61,12 @@ service cloud.firestore {
       allow update: if esDueno();
     }
 
+    // Salidas internas (otro negocio, consumo propio, merma): no son venta
+    match /salidas/{id} {
+      allow read: if esDueno() || (esCajero() && resource.data.uid == request.auth.uid);
+      allow create: if esCajero() && soyYo('uid');
+    }
+
     match /clientes/{id} {
       allow read, create: if esCajero();
       allow update, delete: if esDueno();

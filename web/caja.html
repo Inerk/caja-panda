@@ -48,6 +48,7 @@ header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;backgroun
 nav.tabs{display:flex;gap:4px;padding:6px;border-radius:24px;background:var(--glass),var(--bg2);border:1px solid var(--line);overflow-x:auto}
 nav.tabs button{flex:1 1 0;min-width:68px;border:1px solid transparent;background:transparent;padding:10px 6px;border-radius:18px;font-weight:600;font-size:14px;color:var(--muted);cursor:pointer;display:grid;justify-items:center;gap:4px;white-space:nowrap}
 nav.tabs button svg{width:26px;height:26px}
+@media (max-width:520px){nav.tabs{gap:2px;padding:4px}nav.tabs button{min-width:0;padding:8px 2px;font-size:12px;letter-spacing:-.2px}nav.tabs button svg{width:22px;height:22px}}
 nav.tabs button[aria-selected="true"]{background:var(--btn-grad);color:#fff;border-color:rgba(255,255,255,.18);box-shadow:0 8px 24px rgba(79,70,229,.35),inset 0 1px 0 rgba(255,255,255,.2)}
 nav.tabs button:focus-visible,.btn:focus-visible,.iconbtn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 
@@ -166,7 +167,7 @@ dialog::backdrop{background:rgba(5,6,15,.7);backdrop-filter:blur(3px)}
 .dlg{display:grid;gap:14px;padding:20px}
 .dlg header{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .dlg footer{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-.pay{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.pay{display:grid;grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px}
 .pay.three{grid-template-columns:repeat(3,1fr)}
 @media (max-width:420px){.pay{grid-template-columns:repeat(2,1fr)}}
 .pay button{padding:13px 6px;border:1px solid var(--line);border-radius:14px;background:var(--bg2);font-weight:700;cursor:pointer}
@@ -570,12 +571,21 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
     <button type="button" data-m="Tarjeta" aria-pressed="false">Tarjeta</button>
     <button type="button" data-m="Transferencia" aria-pressed="false">Transfer.</button>
     <button type="button" data-m="Fiado" aria-pressed="false">Fiado</button>
+    <button type="button" data-m="Salida" aria-pressed="false">Salida</button>
   </div>
   <div id="cashBox">
     <label class="label" for="recibido">Recibido</label>
     <input id="recibido" class="moneyin" type="number" inputmode="decimal" min="0" step="0.5">
     <div class="row" style="margin-top:8px" id="quickCash"></div>
     <div class="kv" style="margin-top:10px;font-size:18px"><span>Cambio</span><b class="num" id="cambio">$0.00</b></div>
+  </div>
+  <div id="salidaBox" hidden style="display:grid;gap:10px">
+    <div class="banner warn" style="margin:0">No es venta: se descuenta del inventario y se registra a costo. No entra dinero a la caja.</div>
+    <span class="label">¿A dónde va la mercancía?</span>
+    <div class="row" id="salDest"></div>
+    <div class="field"><label class="label" for="salNota">Nota (opcional)</label><input id="salNota" maxlength="80" placeholder="Para qué se usa, quién se lo lleva…"></div>
+    <div class="kv" style="font-size:17px"><span>Valor a costo</span><b class="num" id="salCosto">$0.00</b></div>
+    <div class="muted" id="salSinCosto" style="font-size:13px" hidden></div>
   </div>
   <div id="fiadoBox" hidden style="display:grid;gap:8px">
     <label class="label" for="fiaSearch">Cliente</label>
@@ -979,7 +989,7 @@ $('#btnCobrar').onclick=()=>{
   const qs=[t,...[20,50,100,200,500,1000].filter(v=>v>t).slice(0,4)];
   $('#quickCash').innerHTML=qs.map((v,i)=>`<button type="button" class="chip" data-v="${v}">${i===0?'Exacto':money(v)}</button>`).join('');
   setMetodo('Efectivo');calcCambio();open('#dlgCobro');setTimeout(()=>$('#recibido').focus(),60)};
-function setMetodo(m){S.metodo=m;setPay('#payBtns',m);$('#cashBox').hidden=m!=='Efectivo';$('#fiadoBox').hidden=m!=='Fiado';$('#cobroErr').hidden=true;if(m==='Fiado'){renderFiaSel();setTimeout(()=>$('#fiaSearch').focus(),40)}}
+function setMetodo(m){S.metodo=m;setPay('#payBtns',m);$('#cashBox').hidden=m!=='Efectivo';$('#fiadoBox').hidden=m!=='Fiado';$('#salidaBox').hidden=m!=='Salida';$('#btnConfirmar').textContent=m==='Salida'?'Registrar salida':'Confirmar venta';if(m==='Salida')renderSalida();$('#cobroErr').hidden=true;if(m==='Fiado'){renderFiaSel();setTimeout(()=>$('#fiaSearch').focus(),40)}}
 $('#payBtns').onclick=e=>{const b=e.target.closest('button');if(b)setMetodo(b.dataset.m)};
 $('#quickCash').onclick=e=>{const b=e.target.closest('button');if(b){$('#recibido').value=b.dataset.v;calcCambio()}};
 $('#recibido').oninput=calcCambio;
@@ -1006,7 +1016,35 @@ $('#cobroForm').addEventListener('submit',async e=>{e.preventDefault();await cob
 
 function mkFolio(d){const yy=String(d.getFullYear()).slice(2);return `${yy}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}-${Math.random().toString(36).slice(2,5).toUpperCase()}`}
 
+/* ---------- Salidas internas (Marleny, consumo propio, merma) ---------- */
+const DESTINOS=['Marleny','Consumo propio','Merma o caducado'];
+S.salDest=DESTINOS[0];
+function salCostoDe(it){const p=S.byId.get(it.pid);return +(p&&p.costo)||+it.costo||0}
+function renderSalida(){
+  $('#salDest').innerHTML=DESTINOS.map(d=>`<button type="button" class="chip" data-d="${esc(d)}" aria-pressed="${d===S.salDest}">${esc(d)}</button>`).join('');
+  const c=r2(S.cart.reduce((a,i)=>a+salCostoDe(i)*i.cant,0));$('#salCosto').textContent=money(c);
+  const sin=S.cart.filter(i=>!salCostoDe(i)).length;$('#salSinCosto').hidden=!sin;
+  $('#salSinCosto').textContent=sin?`${sin} producto${sin===1?'':'s'} sin costo capturado: cuentan como $0. Captura su costo en Inventario para que el valor sea real.`:''}
+$('#salDest').onclick=e=>{const b=e.target.closest('button[data-d]');if(b){S.salDest=b.dataset.d;renderSalida()}};
+async function registrarSalida(){
+  if(S.busy)return;S.busy=true;$('#btnConfirmar').disabled=true;$('#btnConfirmar').textContent='Guardando…';
+  const now=new Date();const folio='S'+mkFolio(now);
+  const items=S.cart.map(i=>{const costo=salCostoDe(i);return{pid:i.pid,codigo:i.codigo,nombre:i.nombre,precio:i.precio,costo,cant:i.cant,subtotal:r2(costo*i.cant)}});
+  const sal={folio,ts:now.getTime(),dia:dayKey(now),hora:hora(now),items,destino:S.salDest,nota:$('#salNota').value.trim(),
+    articulos:items.reduce((a,i)=>a+i.cant,0),costoTotal:r2(items.reduce((a,i)=>a+i.subtotal,0)),precioTotal:r2(items.reduce((a,i)=>a+i.precio*i.cant,0)),uid:S.uid,turnoId:S.turno?S.turno.id:null};
+  try{await Store.set('salidas/'+folio,sal)}catch(err){toast('No se guardó la salida: '+errMsg(err));S.busy=false;$('#btnConfirmar').disabled=false;setMetodo('Salida');return}
+  const fallos=[];for(const it of items){try{await Store.incr('productos/'+it.pid,'stock',-it.cant,{actualizado:now.getTime()})}catch(e){fallos.push(it.nombre)}}
+  if(fallos.length)toast('Salida guardada, pero no se descontó existencia de: '+fallos.join(', '));
+  S.cart=[];renderCart();close('#dlgCobro');S.busy=false;$('#btnConfirmar').disabled=false;$('#salNota').value='';setMetodo('Efectivo');
+  showTicket(docSalida(sal),{title:`Salida a ${sal.destino}`,file:'salida-'+folio,nueva:false})}
+function docSalida(x){const corta=t=>{t=String(t);return t.length>24?t.slice(0,23)+'…':t};
+  return ()=>drawDoc({titulo:'VALE DE SALIDA',firma:'Firma de quien recibe',filas:[
+    {l:'Destino:',r:x.destino},{l:'Fecha:',r:fechaLarga(x.ts)},{l:'Entregó:',r:nombreDe(x.uid)},{l:'Folio:',r:x.folio},...(x.nota?[{l:'Nota:',r:corta(x.nota)}]:[]),{sep:1},
+    ...x.items.map(i=>({l:`${i.cant} ${corta(i.nombre)}`,r:money(i.subtotal)})),{sep:1},
+    {box:['A COSTO',money(x.costoTotal)],nota:`A precio de venta: ${money(x.precioTotal)} · No es venta`}]})}
+
 async function cobrar(){
+  if(S.metodo==='Salida'){if(!S.cart.length)return;return registrarSalida()}
   if(S.busy||!S.turno)return;const total=cartTotal();
   let recibido=total,cambio=0,cliente=null;
   if(S.metodo==='Efectivo'){const r=parseFloat($('#recibido').value);if(!isNaN(r)){if(r<total){toast('El efectivo recibido no alcanza');return}recibido=r2(r);cambio=r2(r-total)}}
@@ -1493,6 +1531,13 @@ $('#impGo').onclick=async()=>{if(!can('inv_editar')||S.busy||!impRows.length)ret
 $('#chipSinPrecio').onclick=()=>{S.sinPrecio=!S.sinPrecio;$('#chipSinPrecio').setAttribute('aria-pressed',String(!!S.sinPrecio));renderInv()};
 
 /* ---------- Ventas (dueño) ---------- */
+function salTiles(){const L=S.salidasDia||[];if(!L.length)return'';const by={};for(const x of L){by[x.destino]=r2((by[x.destino]||0)+(+x.costoTotal||0))}
+  return Object.entries(by).map(([d,c])=>`<div class="tile" data-saldest="${esc(d)}" style="cursor:pointer"><div class="label">Salida a ${esc(d)} (a costo)</div><div class="v">${money(c)}</div></div>`).join('')}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-saldest]');if(!t)return;const d=t.dataset.saldest;const L=(S.salidasDia||[]).filter(x=>x.destino===d).sort((a,b)=>b.ts-a.ts);
+  $('#vtTitle').textContent=`Salidas a ${d}`;
+  $('#vtBody').innerHTML=`<div class="list">${L.map(x=>`<div data-salf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(x.hora)}</b> · ${x.articulos} art. · ${esc(nombreDe(x.uid))}${x.nota?`<br><span class="muted" style="font-size:12px">${esc(x.nota)}</span>`:''}</span><span class="num">${money(x.costoTotal)}</span></div>`).join('')}</div>`;
+  $('#vtFooter').innerHTML='<button class="btn" data-close>Cerrar</button>';open('#dlgVenta')});
+document.addEventListener('click',e=>{const r=e.target.closest('[data-salf]');if(!r)return;const x=(S.salidasDia||[]).find(y=>y.folio===r.dataset.salf);if(!x)return;close('#dlgVenta');showTicket(docSalida(x),{title:`Salida a ${x.destino}`,file:'salida-'+x.folio,nueva:false})});
 function renderVentas(){
   const v=S.ventasDia.slice().sort((a,b)=>b.ts-a.ts);const ok=v.filter(x=>x.estado!=='cancelada');
   const tot=sum(ok,x=>x.total),gan=sum(ok,x=>x.total-(x.costoTotal||0));
@@ -1503,7 +1548,7 @@ function renderVentas(){
     <div class="tile"><div class="label">Tarjeta</div><div class="v">${money(by('Tarjeta'))}</div></div>
     <div class="tile"><div class="label">Transferencia</div><div class="v">${money(by('Transferencia'))}</div></div>
     <div class="tile"><div class="label">Fiado</div><div class="v">${money(by('Fiado'))}</div></div>
-    <div class="tile"><div class="label">Ganancia estimada</div><div class="v">${money(gan)}</div></div>`;
+    <div class="tile"><div class="label">Ganancia estimada</div><div class="v">${money(gan)}</div></div>${salTiles()}`;
   $('#ventasBody').innerHTML=v.length?v.map(x=>`<tr class="click" data-f="${esc(x.folio)}"><td class="num" style="font-size:13px">${esc(x.folio)}</td><td class="num">${esc(x.hora)}</td><td>${esc(nombreDe(x.uid||x.vendedor))}</td><td class="r num">${x.articulos}</td><td>${esc(x.metodo)}${x.clienteNombre?`<div class="muted" style="font-size:12px">${esc(x.clienteNombre)}</div>`:''}</td><td class="r num"><b>${money(x.total)}</b></td><td>${x.estado==='cancelada'?'<span class="pill bad">Cancelada</span>':'<span class="pill ok">OK</span>'}</td></tr>`).join('')
     :`<tr><td colspan="7"><div class="empty" style="border:0">No hay ventas este día.</div></td></tr>`;
 }
@@ -1529,7 +1574,8 @@ async function cancelarVenta(v){
   }catch(ex){toast(errMsg(ex))}
 }
 function subVentasDia(){
-  if(S.unsub.dia)S.unsub.dia();
+  if(S.unsub.dia)S.unsub.dia();if(S.unsub.sal)S.unsub.sal();
+  S.unsub.sal=Store.watch('salidas',{where:[['dia','==',S.dia]]},l=>{S.salidasDia=l;renderVentas()},()=>{});
   S.unsub.dia=Store.watch('ventas',{where:[['dia','==',S.dia]]},l=>{S.ventasDia=l;renderVentas()},e=>toast('Ventas: '+errMsg(e)));
 }
 $('#dia').value=S.dia;$('#dia').onchange=e=>{if(!e.target.value)return;S.dia=e.target.value;if(Store.db&&can('ventas'))subVentasDia()};
