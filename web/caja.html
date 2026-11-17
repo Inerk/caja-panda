@@ -830,7 +830,7 @@ function setPay(container,m){$$(container+' button').forEach(b=>b.setAttribute('
 
 /* ---------- Pestañas y roles ---------- */
 const TABPERM={vender:'vender',fiado:'fiado',turno:'turno',inventario:'inventario',ventas:'ventas',ajustes:'ajustes'};
-function showTab(t){
+function showTab(t){if(t==='ventas')diaAlDia();
   if(!can(TABPERM[t])) t=firstTab();
   if(!t) return;
   S.tab=t;
@@ -1625,7 +1625,10 @@ function subVentasDia(){
   if(!S.unsub.salp&&esDuenoYo())S.unsub.salp=Store.watch('salidas',{where:[['pendiente','==',true]]},l=>{S.salPend=l;renderVentas()},()=>{});
   S.unsub.dia=Store.watch('ventas',{where:[['dia','==',S.dia]]},l=>{S.ventasDia=l;renderVentas()},e=>toast('Ventas: '+errMsg(e)));
 }
-$('#dia').value=S.dia;$('#dia').onchange=e=>{if(!e.target.value)return;S.dia=e.target.value;if(Store.db&&can('ventas'))subVentasDia()};
+$('#dia').value=S.dia;S.diaAuto=true;$('#dia').onchange=e=>{if(!e.target.value)return;S.dia=e.target.value;S.diaAuto=S.dia===dayKey(new Date());if(Store.db&&can('ventas'))subVentasDia()};
+// Si la app se quedó abierta de un día para otro, Ventas se pasa sola al día de hoy
+function diaAlDia(){const hoy=dayKey(new Date());if(S.diaAuto&&S.dia!==hoy){S.dia=hoy;$('#dia').value=hoy;if(Store.db&&can('ventas'))subVentasDia()}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)diaAlDia()});setInterval(diaAlDia,60000);
 
 /* ---------- Usuarios (dueño) ---------- */
 function setUsuarios(list){S.usuarios=list;S.usrById=new Map(list.map(u=>[u.id,u]));renderUsuarios();renderTurnos();renderVentas();renderMovs();refreshCliDlg()}
