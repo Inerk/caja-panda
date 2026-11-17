@@ -47,7 +47,10 @@ service cloud.firestore {
       allow create, delete: if esAlmacen();
       // el cajero solo puede descontar o regresar existencia
       allow update: if esAlmacen() ||
-        (esCajero() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'actualizado']));
+        (esCajero() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'actualizado'])) ||
+        // el cajero puede ponerle código de barras a un producto que no tenía
+        (esCajero() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['codigo', 'actualizado']) &&
+          (!('codigo' in resource.data) || resource.data.codigo == null || resource.data.codigo == ''));
     }
 
     match /movimientos/{id} {

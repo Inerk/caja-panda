@@ -514,6 +514,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
       <input type="search" id="invSearch" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
       <button class="chip" id="chipLow" aria-pressed="false">Stock bajo</button>
       <button class="chip" id="chipSinPrecio" aria-pressed="false">Sin precio</button>
+      <button class="chip" id="chipSinCodigo" aria-pressed="false">Sin código</button>
       <button class="btn" id="btnInvCsv" data-need="costos">Exportar CSV</button>
     </div>
     <div class="tbl"><table>
@@ -665,6 +666,18 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <header><h2 id="vtTitle">Venta</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div id="vtBody"></div>
   <footer id="vtFooter"></footer>
+</div></dialog>
+
+<dialog id="dlgLigar"><div class="dlg">
+  <header><h2>Código nuevo</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <div style="display:grid;gap:10px">
+    <div class="muted">Este código todavía no está en el sistema: <b class="num" id="lgCode"></b></div>
+    <div class="banner warn" id="lgInfo" style="margin:0">Buscando el producto en internet…</div>
+    <span class="label">¿Es alguno de estos productos? Tócalo y el código se le queda guardado.</span>
+    <input id="lgSearch" autocomplete="off" placeholder="Busca por nombre" style="padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)">
+    <div class="results" id="lgResults" style="margin:0"></div>
+  </div>
+  <footer><button type="button" class="btn" data-close>Cancelar</button><button type="button" class="btn primary" id="lgNuevo">Es producto nuevo</button></footer>
 </div></dialog>
 
 <dialog id="dlgCliForm"><form class="dlg" id="cliForm">
@@ -904,12 +917,39 @@ function handleScan(raw){
   if(found.length===1){addToCart(found[0],cant);clearScan();return}
   if(found.length===0){
     if(/^[\w\-.]{4,}$/.test(v)&&/\d/.test(v)){
-      if(can('inv_editar')){toast('Código no registrado. Dalo de alta.');openProd(null,{codigo:v})}
-      else toast('Ese código no está registrado. Avisa a quien maneja el inventario.');
-      clearScan();
+      ligarCodigo(v,cant);clearScan();
     } else toast('No encontré ese producto');
   }
 }
+/* Código desconocido: ligarlo a un producto que ya existe (sin código) en lugar de crear un duplicado */
+const LG={code:'',cant:1,sug:'',seq:0};
+const tok=s=>norm(s).replace(/[^a-z0-9ñ ]/g,' ').split(/\s+/).filter(w=>w.length>=3&&!/^(con|sin|del|las|los|para|de)$/.test(w));
+function lgCandidatos(){const q=$('#lgSearch').value.trim();
+  if(q)return search(q,12);
+  const sinCod=S.productos.filter(p=>!String(p.codigo||'').trim());
+  if(!LG.sug)return[];const T=tok(LG.sug);
+  return sinCod.map(p=>{const h=norm(p.nombre);return[p,T.reduce((a,w)=>a+(h.includes(w)?1:0),0)]}).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[0])}
+function renderLigar(){const L=lgCandidatos();
+  $('#lgResults').innerHTML=L.length?L.map(p=>`<button type="button" data-lg="${esc(p.id)}"><span><b>${esc(p.nombre)}</b><br><span class="code">${esc(p.codigo||'sin código')} · existencia ${+p.stock||0}</span></span><span class="num">${money(p.precio)}</span></button>`).join('')
+    :`<div class="muted" style="padding:8px 2px">${$('#lgSearch').value.trim()?'No encontré productos con ese nombre.':'Escribe el nombre para buscarlo.'}</div>`}
+async function ligarCodigo(code,cant){LG.code=code;LG.cant=cant||1;LG.sug='';const my=++LG.seq;
+  $('#lgCode').textContent=code;$('#lgSearch').value='';$('#lgNuevo').hidden=!can('inv_editar');
+  const info=$('#lgInfo');info.className='banner warn';info.hidden=false;
+  if(/^\d{8,14}$/.test(code)){info.textContent='Buscando el producto en internet…'}else info.hidden=true;
+  renderLigar();open('#dlgLigar');setTimeout(()=>$('#lgSearch').focus(),60);
+  if(info.hidden)return;
+  const r=await buscarProductoOnline(code);if(my!==LG.seq||!$('#dlgLigar').open)return;
+  if(r){LG.sug=r.nombre;info.className='banner ok';info.textContent='En internet aparece como: '+r.nombre;}
+  else info.textContent=navigator.onLine===false?'Sin internet. Búscalo por nombre.':'No aparece en internet. Búscalo por nombre.';
+  if(!$('#lgSearch').value.trim())renderLigar()}
+$('#lgSearch').oninput=renderLigar;
+$('#lgResults').onclick=async e=>{const b=e.target.closest('[data-lg]');if(!b)return;const p=S.byId.get(b.dataset.lg);if(!p)return;
+  if(String(p.codigo||'').trim()){toast(`${p.nombre} ya tiene otro código. Si está mal, corrígelo en Inventario.`);return}
+  b.disabled=true;
+  try{await Store.update('productos/'+p.id,{codigo:LG.code,actualizado:Date.now()});p.codigo=LG.code;S.byCode.set(LG.code,p);
+    close('#dlgLigar');toast(`Código guardado en ${p.nombre}`);if(S.tab==='vender'){if(p.suelto)askQty(p);else addToCart(p,LG.cant)}}
+  catch(ex){b.disabled=false;toast('No se pudo guardar: '+errMsg(ex))}};
+$('#lgNuevo').onclick=()=>{close('#dlgLigar');openProd(null,{codigo:LG.code})};
 function clearScan(){$('#scanInput').value='';renderResults();if(S.tab==='vender')$('#scanInput').focus()}
 $('#scanInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();handleScan(e.target.value)}});
 $('#scanInput').addEventListener('input',renderResults);
@@ -1474,6 +1514,7 @@ function renderInv(){
   const q=$('#invSearch').value;let list=q?search(q,10000):S.productos;
   if(S.lowOnly) list=list.filter(p=>(+p.stock||0)<=minOf(p));
   if(S.sinPrecio) list=list.filter(p=>!(+p.precio>0));
+  if(S.sinCodigo) list=list.filter(p=>!String(p.codigo||'').trim());
   const showCost=can('costos'),cols=showCost?5:4;
   const body=$('#invBody');
   if(!S.productos.length) body.innerHTML=`<tr><td colspan="${cols}"><div class="empty" style="border:0">Sin productos todavía.${can('inv_editar')?' Usa <b>Nuevo producto</b> y escanea el código en el campo correspondiente.':''}</div></td></tr>`;
@@ -1574,6 +1615,7 @@ $('#impGo').onclick=async()=>{if(!can('inv_editar')||S.busy||!impRows.length)ret
     try{const id=Store.newId('productos');await Store.set('productos/'+id,{nombre:x.nombre,codigo:x.codigo,precio:x.precio,costo:x.costo,stock:x.stock,minimo:S.cfg.stockMin,categoria:x.categoria,actualizado:now,creado:now});
       if(x.stock)logMov({tipo:'alta',pid:id,nombre:x.nombre,cant:x.stock,antes:0,despues:x.stock,nota:'Importado de lista'});ok++}catch(ex){fail++}}
   S.busy=false;close('#dlgImport');toast(`${ok} productos agregados`+(fail?` · ${fail} fallaron`:''))};
+$('#chipSinCodigo').onclick=()=>{S.sinCodigo=!S.sinCodigo;$('#chipSinCodigo').setAttribute('aria-pressed',String(!!S.sinCodigo));renderInv()};
 $('#chipSinPrecio').onclick=()=>{S.sinPrecio=!S.sinPrecio;$('#chipSinPrecio').setAttribute('aria-pressed',String(!!S.sinPrecio));renderInv()};
 
 /* ---------- Ventas (dueño) ---------- */
