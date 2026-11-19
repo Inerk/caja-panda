@@ -1,0 +1,21 @@
+name: Publicar reglas de Firebase
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ firestore.rules ]
+  workflow_dispatch:
+
+jobs:
+  reglas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publicar firestore.rules
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SA }}
+        run: |
+          if [ -z "$FIREBASE_SA" ]; then echo "Falta el secreto FIREBASE_SA; no se publican las reglas."; exit 0; fi
+          printf '%s' "$FIREBASE_SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx -y firebase-tools@13.29.1 deploy --only firestore:rules --project caja-panda --non-interactive
