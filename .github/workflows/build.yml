@@ -38,12 +38,19 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release.apk Caja-Panda-v1.0.${{ github.run_number }}.apk
           cp app/build/outputs/apk/release/app-release.apk Caja-Panda.apk
+      - name: Notas de la versión
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "$MSG" | grep -viE '^(co-authored-by|claude-session|signed-off-by):' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > notas.txt
+          [ -s notas.txt ] || echo "Mejoras y correcciones." > notas.txt
+          cat notas.txt
       - name: Publicar versión
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: Caja Panda v1.0.${{ github.run_number }}
-          body: ${{ github.event.head_commit.message }}
+          body_path: notas.txt
           files: |
             Caja-Panda-v1.0.${{ github.run_number }}.apk
             Caja-Panda.apk
