@@ -811,7 +811,7 @@ const ROLES = {
   dueno:{label:'Dueño',p:['vender','fiado','turno','inventario','inv_editar','costos','ventas','cancelar','ajustes']},
   cajero:{label:'Cajero',p:['vender','fiado','turno','inventario']},
   almacen:{label:'Inventario',p:['inventario','inv_editar','costos']},
-  encargado:{label:'Encargada',p:['vender','fiado','turno','inventario','inv_editar','costos']},
+  encargado:{label:'Encargada',p:['vender','fiado','turno','inventario','inv_editar','inv_borrar','costos']},
   pendiente:{label:'Pendiente',p:[]}
 };
 
@@ -1584,7 +1584,7 @@ function openProd(p,pre={}){
   $('#pNombre').value=p?.nombre||'';$('#pCodigo').value=p?.codigo||pre.codigo||'';$('#pPrecio').value=p?.precio??'';
   $('#pCosto').value=p?.costo??'';$('#pStock').value=p?.stock??0;$('#pMin').value=p?.minimo??S.cfg.stockMin;$('#pCat').value=p?.categoria||'';
   $('#pRapido').checked=!!(p&&p.rapido);$('#pSuelto').checked=!!(p&&p.suelto);setProdFoto(p&&okFoto(p.foto)?p.foto:'');$('#btnEtiqueta').hidden=!p||!p.codigo;
-  $('#btnBorrar').hidden=!p||!can('cancelar');$('#prodErr').hidden=true;$('#prodInfo').hidden=true;lookSeq++;open('#dlgProd');if(!p&&pre.codigo)autollenar(String(pre.codigo),false);setTimeout(()=>$('#pNombre').focus(),60);
+  $('#btnBorrar').hidden=!p||!(can('cancelar')||can('inv_borrar'));$('#prodErr').hidden=true;$('#prodInfo').hidden=true;lookSeq++;open('#dlgProd');if(!p&&pre.codigo)autollenar(String(pre.codigo),false);setTimeout(()=>$('#pNombre').focus(),60);
 }
 $('#pCodigo').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pPrecio').focus()}});
 $('#prodForm').addEventListener('submit',async e=>{
