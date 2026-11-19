@@ -53,6 +53,18 @@ service cloud.firestore {
           (!('codigo' in resource.data) || resource.data.codigo == null || resource.data.codigo == ''));
     }
 
+    // Catálogo de proveedores: todos lo ven; inventario/encargada/dueño lo editan
+    match /proveedores/{id} {
+      allow read: if activo();
+      allow create, update, delete: if esAlmacen();
+    }
+
+    // Historial de costos (solo quien ve costos)
+    match /precios/{id} {
+      allow read: if esAlmacen();
+      allow create: if esAlmacen() && soyYo('uid');
+    }
+
     match /movimientos/{id} {
       allow read: if activo();
       allow create: if activo();
