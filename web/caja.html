@@ -497,6 +497,7 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
       </div>
     </div>
     <div class="tiles" id="invTiles"></div>
+    <div class="banner warn" id="dupBanner" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="dupTxt" style="flex:1;min-width:180px"></span><button type="button" class="btn" id="btnDups">Revisar</button></div>
     <div class="toolbar">
       <input type="search" id="invSearch" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
       <button class="chip" id="chipLow" aria-pressed="false">Stock bajo</button>
@@ -653,6 +654,13 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
   <header><h2 id="vtTitle">Venta</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div id="vtBody"></div>
   <footer id="vtFooter"></footer>
+</div></dialog>
+
+<dialog id="dlgDups"><div class="dlg" style="max-width:640px">
+  <header><h2>Posibles duplicados</h2><button class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <p class="muted" style="margin:0 0 6px">Marca cuál se queda. Al unir, se suman las existencias y se conservan el código, el costo y la foto del otro. Si no son el mismo producto, toca "No son iguales".</p>
+  <div id="dupBody" style="display:grid;gap:12px"></div>
+  <footer><button type="button" class="btn" data-close>Cerrar</button></footer>
 </div></dialog>
 
 <dialog id="dlgLigar"><div class="dlg">
@@ -876,7 +884,8 @@ function renderAll(){renderCart();renderInv();renderMovs();renderFiado();renderT
 function setProductos(list){
   S.productos=list.sort((a,b)=>String(a.nombre).localeCompare(b.nombre,'es'));
   S.byId=new Map(list.map(p=>[p.id,p]));
-  S.byCode=new Map(list.filter(p=>p.codigo).map(p=>[String(p.codigo).trim(),p]));
+  S.byCode=new Map();for(const p of list){for(const c of (Array.isArray(p.codigos)?p.codigos:[]))if(String(c).trim())S.byCode.set(String(c).trim(),p);if(p.codigo)S.byCode.set(String(p.codigo).trim(),p)}
+  S.dups=null;
   $('#catList').innerHTML=[...new Set(list.map(p=>p.categoria).filter(Boolean))].map(c=>`<option value="${esc(c)}">`).join('');
   S.cart.forEach(it=>{const p=S.byId.get(it.pid);if(p)it.stock=p.stock});
   renderCart();renderInv();renderResults();renderRapida();
@@ -1497,7 +1506,55 @@ function renderTurnos(){
 $('#turnosBody').onclick=e=>{const tr=e.target.closest('tr[data-id]');if(!tr)return;const t=S.turnos.find(x=>x.id===tr.dataset.id);if(t)showTicket(docCorte(t),{title:'Corte de caja',file:`corte-${dayKey(new Date(t.cerrado))}-${nombreDe(t.uid).replace(/\W+/g,'-')}`,nueva:false})};
 
 /* ---------- Inventario ---------- */
-function renderInv(){
+/* ---------- Detector de productos duplicados ---------- */
+const dupNorm=s=>norm(s).replace(/(\d)\s+(ml|lt?|l|gr?|g|kg|pz|pzs|oz)\b/g,'$1$2').replace(/\bgr\b/g,'g').replace(/[^a-z0-9ñ ]/g,' ').replace(/\s+/g,' ').trim();
+const dupNums=s=>(s.match(/\d+(?:[.,]\d+)?/g)||[]).sort().join(',');
+function lev(a,b){if(a===b)return 0;const m=a.length,n=b.length;if(!m||!n)return m||n;let prev=Array.from({length:n+1},(_,i)=>i);
+  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur}return prev[n]}
+function dupIgn(){try{return new Set(JSON.parse(localStorage.getItem('dup-ign')||'[]'))}catch(e){return new Set()}}
+const pairKey=(a,b)=>[a,b].sort().join('|');
+function similares(a,b){if(a.codigo&&b.codigo&&String(a.codigo).trim()===String(b.codigo).trim())return true;
+  const x=dupNorm(a.nombre),y=dupNorm(b.nombre);if(!x||!y)return false;if(x===y)return true;
+  if(dupNums(x)!==dupNums(y))return false;
+  const tx=x.split(' ').sort().join(' '),ty=y.split(' ').sort().join(' ');if(tx===ty)return true;
+  if(a.codigo&&b.codigo)return false; // los dos con código distinto: son productos distintos
+  const L=Math.max(x.length,y.length);return L>=5&&lev(x,y)/L<=0.18}
+function buscarDups(){if(S.dups)return S.dups;const ign=dupIgn(),P=S.productos,n=P.length,par=Array.from({length:n},(_,i)=>i);
+  const f=i=>par[i]===i?i:(par[i]=f(par[i]));
+  const pre=P.map(p=>dupNorm(p.nombre).split(' ')[0]||'');
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const a=P[i],b=P[j];
+    if(pre[i]!==pre[j]&&!(a.codigo&&a.codigo===b.codigo))continue;
+    if(ign.has(pairKey(a.id,b.id)))continue;if(similares(a,b))par[f(j)]=f(i)}
+  const g=new Map();P.forEach((p,i)=>{const r=f(i);if(!g.has(r))g.set(r,[]);g.get(r).push(p)});
+  return S.dups=[...g.values()].filter(x=>x.length>1)}
+const riqueza=p=>(p.codigo?8:0)+(+p.costo>0?4:0)+(+p.precio>0?2:0)+(okFoto(p.foto)?1:0)+(+p.stock||0)/1e4;
+function renderDupBanner(){const b=$('#dupBanner');if(!can('inv_editar')){b.hidden=true;return}const G=buscarDups();b.hidden=!G.length;
+  if(G.length)$('#dupTxt').innerHTML=`Hay <b>${G.length}</b> ${G.length===1?'grupo':'grupos'} de productos que parecen repetidos.`}
+function renderDups(){const G=buscarDups();
+  if(!G.length){$('#dupBody').innerHTML='<div class="empty">No hay posibles duplicados. ¡Todo limpio!</div>';return}
+  $('#dupBody').innerHTML=G.map((g,gi)=>{const best=g.slice().sort((a,b)=>riqueza(b)-riqueza(a))[0];
+    return `<div class="panel" style="padding:12px;margin:0" data-g="${gi}">${g.map(p=>`<label style="display:flex;gap:10px;align-items:center;padding:6px 0;cursor:pointer"><input type="radio" name="dg${gi}" value="${esc(p.id)}" ${p===best?'checked':''}>
+      <span style="flex:1"><b>${esc(p.nombre)}</b><br><span class="muted num" style="font-size:12px">${esc(p.codigo||'sin código')} · ${money(p.precio)}${can('costos')?` · costo ${p.costo?money(p.costo):'—'}`:''} · existencia ${+p.stock||0}</span></span></label>`).join('')}
+      <div class="row" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn" data-dupno="${gi}">No son iguales</button><button type="button" class="btn primary" data-dupok="${gi}">Unir en el marcado</button></div></div>`}).join('')}
+$('#btnDups').onclick=()=>{renderDups();open('#dlgDups')};
+$('#dupBody').onclick=async e=>{const no=e.target.closest('[data-dupno]'),ok=e.target.closest('[data-dupok]');if(!no&&!ok)return;
+  const gi=+(no||ok).dataset[no?'dupno':'dupok'],g=buscarDups()[gi];if(!g)return;
+  if(no){const ign=dupIgn();for(const a of g)for(const b of g)if(a!==b)ign.add(pairKey(a.id,b.id));try{localStorage.setItem('dup-ign',JSON.stringify([...ign]))}catch(x){}
+    S.dups=null;renderDups();renderDupBanner();return}
+  const kid=(e.target.closest('[data-g]').querySelector('input:checked')||{}).value,K=g.find(p=>p.id===kid);if(!K)return;const O=g.filter(p=>p!==K);
+  if(!await confirmBox('Unir productos',`Se quedará "${K.nombre}" con existencia ${(+K.stock||0)+O.reduce((a,p)=>a+(+p.stock||0),0)} y se quitarán ${O.length===1?'el otro':'los otros '+O.length}. Las ventas pasadas no cambian.`,'Unir'))return;
+  ok.disabled=true;
+  const upd={stock:(+K.stock||0)+O.reduce((a,p)=>a+(+p.stock||0),0),actualizado:Date.now()};
+  const codes=new Set((Array.isArray(K.codigos)?K.codigos:[]).map(String));let cod=K.codigo||'';
+  for(const p of O){for(const c of [p.codigo,...(Array.isArray(p.codigos)?p.codigos:[])]){const v=String(c||'').trim();if(!v)continue;if(!cod)cod=v;else if(v!==cod)codes.add(v)}
+    if(!(+K.costo>0)&&+p.costo>0)upd.costo=+p.costo;if(!(+K.precio>0)&&+p.precio>0)upd.precio=+p.precio;
+    if(!okFoto(K.foto)&&okFoto(p.foto)&&!upd.foto)upd.foto=p.foto;if(!K.categoria&&p.categoria&&!upd.categoria)upd.categoria=p.categoria}
+  if(cod!==(K.codigo||''))upd.codigo=cod;codes.delete(cod);if(codes.size)upd.codigos=[...codes];
+  try{await Store.update('productos/'+K.id,upd);
+    for(const p of O){await Store.del('productos/'+p.id);await logMov({tipo:'ajuste',pid:K.id,nombre:K.nombre,cant:+p.stock||0,antes:+K.stock||0,despues:upd.stock,nota:`Unido con duplicado "${p.nombre}"`})}
+    toast('Productos unidos');S.dups=null;setTimeout(()=>{renderDups();renderDupBanner()},400)}
+  catch(ex){ok.disabled=false;toast('No se pudo unir: '+errMsg(ex))}};
+function renderInv(){renderDupBanner();
   const q=$('#invSearch').value;let list=q?search(q,10000):S.productos;
   if(S.lowOnly) list=list.filter(p=>(+p.stock||0)<=minOf(p));
   if(S.sinPrecio) list=list.filter(p=>!(+p.precio>0));
