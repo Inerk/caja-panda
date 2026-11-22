@@ -534,6 +534,7 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
       <h2>Inventario</h2>
       <div class="row">
         <button class="btn" id="btnProvs">Proveedores</button>
+        <button class="btn" id="btnCaducados" data-need="inv_editar">Caducados</button>
         <span class="row" data-need="inv_editar" style="gap:inherit">
         <button class="btn" id="btnImport">Importar lista</button>
         <button class="btn" id="btnEntrada">Entrada de mercancía</button>
@@ -542,7 +543,7 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
       </div>
     </div>
     <div class="tiles" id="invTiles"></div>
-    <div class="banner warn" id="cadBanner" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="cadTxt" style="flex:1;min-width:180px"></span><button type="button" class="btn" id="btnCadVer">Ver</button></div>
+    <div class="banner warn" id="cadBanner" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="cadTxt" style="flex:1;min-width:180px"></span><button type="button" class="btn" id="btnCadVer">Ver</button><button type="button" class="btn primary" id="btnCadSacar" data-need="inv_editar">Sacar caducados</button></div>
     <div class="banner warn" id="dupBanner" hidden style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="dupTxt" style="flex:1;min-width:180px"></span><button type="button" class="btn" id="btnDups">Revisar</button></div>
     <div class="toolbar">
       <input type="search" id="invSearch" placeholder="Buscar por nombre o código" aria-label="Buscar producto">
@@ -596,6 +597,7 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
         <tbody id="anTop"></tbody>
       </table></div>
     </div>
+    <div class="panel"><h3 style="margin-top:0">Pérdidas por caducados</h3><div id="anPerd"></div></div>
     <div class="panel"><h3 style="margin-top:0">Formas de pago</h3><div id="anPago" style="display:grid;gap:10px"></div></div>
     <div class="panel"><h3 style="margin-top:0">Horas con más venta</h3><div id="anHoras"></div></div>
   </section>
@@ -710,6 +712,29 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
   <div class="banner ok" id="prodInfo" hidden style="margin:0"></div>
   <div class="banner bad" id="prodErr" hidden style="margin:0"></div>
   <footer><button type="button" class="btn danger" id="btnBorrar" hidden>Borrar</button><button type="button" class="btn" id="btnEtiqueta" hidden>Etiqueta QR</button><span style="flex:1"></span><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Guardar</button></footer>
+</form></dialog>
+
+<dialog id="dlgCaducados"><form class="dlg" id="cdForm" style="max-width:640px">
+  <header><h2>Registro de mercancía caducada</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <div class="row" id="cdTabs" style="gap:6px;margin-bottom:8px"><button type="button" class="chip" data-t="nuevo" aria-pressed="true">Sacar mercancía</button><button type="button" class="chip" data-t="hist" aria-pressed="false">Historial</button></div>
+  <div id="cdNuevo" style="display:grid;gap:10px">
+    <div class="banner warn" style="margin:0">Lo que registres aquí se descuenta del inventario y cuenta como <b>pérdida</b> a costo. No es venta ni mueve la caja.</div>
+    <div class="field"><label class="label" for="cdCodigo">Escanea o busca el producto</label><div class="row" style="flex-wrap:nowrap"><input id="cdCodigo" autocomplete="off" class="num" style="flex:1;min-width:0" placeholder="Código o nombre"><button type="button" class="btn" data-nscan="cdCodigo" hidden>Escanear</button></div></div>
+    <div class="results" id="cdResults" style="margin:0"></div>
+    <div id="cdSug"></div>
+    <div class="list" id="cdLista"></div>
+    <span class="label">Motivo</span>
+    <div class="row" id="cdMotivo" style="gap:6px"><button type="button" class="chip" data-m="Caducado" aria-pressed="true">Caducado</button><button type="button" class="chip" data-m="Dañado" aria-pressed="false">Dañado o roto</button></div>
+    <div class="field"><label class="label" for="cdNota">Nota (opcional)</label><input id="cdNota" maxlength="80" placeholder="Ej. se lo llevó el proveedor para cambio"></div>
+    <div class="kv" style="font-size:19px"><span>Pérdida a costo</span><b class="num" id="cdTotal" style="color:var(--bad)">$0.00</b></div>
+    <div class="banner warn" id="cdSinCosto" style="margin:0" hidden></div>
+  </div>
+  <div id="cdHist" hidden>
+    <div class="row" id="cdHPer" style="gap:6px;margin-bottom:8px"></div>
+    <div class="tiles" id="cdHTiles"></div>
+    <div class="list" id="cdHList"></div>
+  </div>
+  <footer><button type="button" class="btn" data-close>Cerrar</button><button type="submit" class="btn primary" id="cdGuardar">Registrar caducados</button></footer>
 </form></dialog>
 
 <dialog id="dlgEntrada"><form class="dlg" id="entForm">
@@ -1255,12 +1280,13 @@ async function registrarSalida(){
   S.cart=[];renderCart();close('#dlgCobro');S.busy=false;$('#btnConfirmar').disabled=false;$('#salNota').value='';$('#salOtro').value='';setMetodo('Efectivo');
   showTicket(docSalida(sal),{title:`Salida a ${sal.destino}`,file:'salida-'+folio,nueva:false})}
 function docSalida(x){const corta=t=>{t=String(t);return t.length>24?t.slice(0,23)+'…':t};
-  return ()=>drawDoc({titulo:'VALE DE SALIDA',firma:'Firma de quien recibe',filas:[
-    {l:'Destino:',r:x.destino},{l:'Fecha:',r:fechaLarga(x.ts)},{l:'Entregó:',r:nombreDe(x.uid)},{l:'Folio:',r:x.folio},...(x.nota?[{l:'Nota:',r:corta(x.nota)}]:[]),{sep:1},
+  const perd=x.perdida||esPerdida(x.destino);
+  return ()=>drawDoc({titulo:perd?'BAJA DE MERCANCÍA':'VALE DE SALIDA',firma:perd?'Firma de quien autoriza':'Firma de quien recibe',filas:[
+    {l:perd?'Motivo:':'Destino:',r:x.destino},{l:'Fecha:',r:fechaLarga(x.ts)},{l:perd?'Registró:':'Entregó:',r:nombreDe(x.uid)},{l:'Folio:',r:x.folio},...(x.nota?[{l:'Nota:',r:corta(x.nota)}]:[]),{sep:1},
     ...x.items.map(i=>({l:`${qtyTxt(i)} ${corta(i.nombre)}`,r:money(i.subtotal)})),{sep:1},
     ...(x.cobro?[{l:'Valor a costo:',r:money(x.costoTotal)},{l:'Precio de venta:',r:money(x.precioTotal)},
       {box:[x.cobro.pagado?'PAGÓ':'POR PAGAR',money(x.cobro.monto)],nota:x.cobro.pagado?`Pago: ${x.cobro.metodo}${x.cobro.pagadoTs&&x.cobro.metodo!==x.cobro.metodoOrig?' · '+fechaCorta(x.cobro.pagadoTs):''} · No es venta de mostrador`:'Pendiente de pago · No es venta de mostrador'}]
-    :[{box:['A COSTO',money(x.costoTotal)],nota:`A precio de venta: ${money(x.precioTotal)} · No es venta`}])]})}
+    :[{box:[perd?'PÉRDIDA':'A COSTO',money(x.costoTotal)],nota:perd?`Se dejó de vender: ${money(x.precioTotal)}`:`A precio de venta: ${money(x.precioTotal)} · No es venta`}])]})}
 
 async function cobrar(){
   if(S.metodo==='Salida'){if(!S.cart.length)return;return registrarSalida()}
@@ -1814,6 +1840,65 @@ $('#btnBorrar').onclick=async()=>{if(!editing)return;
   try{await Store.del('productos/'+editing.id);await logMov({tipo:'baja',pid:editing.id,nombre:editing.nombre,cant:-(+editing.stock||0),antes:+editing.stock||0,despues:0,nota:'Producto borrado'});close('#dlgProd');toast('Producto borrado')}catch(ex){toast(errMsg(ex))}};
 async function logMov(m){try{await Store.set('movimientos/'+Store.newId('movimientos'),{...m,ts:Date.now(),uid:S.uid})}catch(e){}}
 
+/* ---------- Registro de mercancía caducada (pérdidas) ---------- */
+const esPerdida=d=>/caduc|merma|dañ/i.test(String(d||''));
+const CD={items:[],motivo:'Caducado',tab:'nuevo',hper:30,busy:false};
+function cdOpen(){CD.items=[];CD.motivo='Caducado';$('#cdNota').value='';$('#cdCodigo').value='';$('#cdResults').innerHTML='';
+  $$('#cdMotivo .chip').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.m==='Caducado')));cdTab('nuevo');cdRender();open('#dlgCaducados');setTimeout(()=>$('#cdCodigo').focus(),60)}
+function cdTab(t){CD.tab=t;$$('#cdTabs .chip').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.t===t)));$('#cdNuevo').hidden=t!=='nuevo';$('#cdHist').hidden=t!=='hist';$('#cdGuardar').hidden=t!=='nuevo';if(t==='hist')cdHist()}
+function cdAdd(p,cant){if(!p)return;const it=CD.items.find(i=>i.pid===p.id);const q=cant||(p.granel?0.5:1);
+  if(it)it.cant=r3(it.cant+(p.granel?0:q));else CD.items.unshift({pid:p.id,codigo:p.codigo||'',nombre:p.nombre,precio:+p.precio||0,costo:+p.costo||0,cant:q,granel:!!p.granel,stock:+p.stock||0,cad:p.caducidad||''});
+  $('#cdCodigo').value='';$('#cdResults').innerHTML='';cdRender();setTimeout(()=>$('#cdCodigo').focus(),30)}
+function cdRender(){
+  const vencidos=S.productos.filter(p=>{const d=diasPara(p.caducidad);return d!=null&&d<=0&&(+p.stock||0)>0&&!CD.items.some(i=>i.pid===p.id)});
+  $('#cdSug').innerHTML=vencidos.length?`<div class="panel" style="margin:0;padding:10px 12px"><span class="label">Ya caducaron según su fecha (toca para agregar)</span><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">${vencidos.slice(0,12).map(p=>`<button type="button" class="chip" data-cdadd="${esc(p.id)}">${esc(p.nombre)}</button>`).join('')}</div></div>`:'';
+  $('#cdLista').innerHTML=CD.items.length?CD.items.map((i,k)=>`<div><span><b>${esc(i.nombre)}</b><br><span class="muted num" style="font-size:12px">${+i.costo>0?`costo ${money(i.costo)}${i.granel?'/kg':' c/u'}`:'sin costo capturado'} · hay ${i.granel?fmtKg(i.stock):i.stock}</span></span>
+      <span class="row" style="gap:6px;flex-wrap:nowrap"><span class="qty" style="display:inline-flex"><button type="button" data-cdk="${k}" data-d="-1" aria-label="Menos">−</button><input data-cdk="${k}" value="${i.cant}" inputmode="decimal" aria-label="${i.granel?'Kilos':'Cantidad'}" style="width:56px;text-align:center"><button type="button" data-cdk="${k}" data-d="1" aria-label="Más">+</button></span><b class="num" style="min-width:70px;text-align:right">${money(r2(i.costo*i.cant))}</b></span></div>`).join('')
+    :'<div class="muted">Escanea o busca los productos caducados que vas a sacar.</div>';
+  const tot=r2(CD.items.reduce((a,i)=>a+i.costo*i.cant,0));$('#cdTotal').textContent=money(tot);
+  const sin=CD.items.filter(i=>!(+i.costo>0));$('#cdSinCosto').hidden=!sin.length;if(sin.length)$('#cdSinCosto').textContent=`${sin.map(i=>i.nombre).join(', ')} no ${sin.length===1?'tiene':'tienen'} costo capturado: se registra${sin.length===1?'':'n'} en $0. Captura el costo en Inventario para que la pérdida sea real.`;
+  $('#cdGuardar').disabled=!CD.items.length}
+$('#btnCaducados').onclick=cdOpen;$('#btnCadSacar').onclick=cdOpen;
+$('#cdTabs').onclick=e=>{const b=e.target.closest('[data-t]');if(b)cdTab(b.dataset.t)};
+$('#cdMotivo').onclick=e=>{const b=e.target.closest('[data-m]');if(!b)return;CD.motivo=b.dataset.m;$$('#cdMotivo .chip').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.m===CD.motivo)))};
+$('#cdCodigo').addEventListener('input',()=>{const l=search($('#cdCodigo').value,6);$('#cdResults').innerHTML=l.map(p=>`<button type="button" data-id="${esc(p.id)}"><span>${esc(p.nombre)}<br><span class="code">${esc(p.codigo||'')}</span></span><span class="num">${stockPill(p)}</span></button>`).join('')});
+$('#cdCodigo').addEventListener('keydown',e=>{if(e.key!=='Enter')return;e.preventDefault();const v=e.target.value.trim();if(!v)return;const m=v.match(/^(\d+(?:\.\d+)?)\*(.+)$/);const code=m?m[2]:v;
+  const f=search(code);const p=S.byCode.get(code)||(f.length===1?f[0]:null);if(p)cdAdd(p,m?+m[1]:0);else toast('No encontré ese producto')});
+$('#cdResults').onclick=e=>{const b=e.target.closest('button[data-id]');if(b)cdAdd(S.byId.get(b.dataset.id))};
+$('#cdSug').onclick=e=>{const b=e.target.closest('[data-cdadd]');if(b)cdAdd(S.byId.get(b.dataset.cdadd))};
+$('#cdLista').addEventListener('click',e=>{const b=e.target.closest('button[data-cdk]');if(!b)return;const it=CD.items[+b.dataset.cdk];it.cant=r3(it.cant+(+b.dataset.d)*(it.granel?0.25:1));if(it.cant<=0)CD.items.splice(+b.dataset.cdk,1);cdRender()});
+$('#cdLista').addEventListener('change',e=>{const i=e.target.closest('input[data-cdk]');if(!i)return;const k=+i.dataset.cdk;const n=r3(parseFloat(String(i.value).replace(',','.')));if(!(n>0))CD.items.splice(k,1);else CD.items[k].cant=CD.items[k].granel?n:Math.round(n);cdRender()});
+$('#cdForm').addEventListener('submit',async e=>{e.preventDefault();if(CD.busy||!CD.items.length)return;
+  const mas=CD.items.filter(i=>i.cant>i.stock);
+  if(mas.length&&!await confirmBox('Más de lo que hay',`${mas.map(i=>i.nombre).join(', ')}: estás sacando más de lo que marca el inventario. La existencia quedará en negativo. ¿Continuar?`,'Continuar'))return;
+  CD.busy=true;$('#cdGuardar').disabled=true;
+  const now=new Date();const folio='S'+mkFolio(now);
+  const items=CD.items.map(i=>({pid:i.pid,codigo:i.codigo,nombre:i.nombre,precio:i.precio,costo:i.costo,cant:i.cant,subtotal:r2(i.costo*i.cant),...(i.granel?{granel:true}:{})}));
+  const sal={folio,ts:now.getTime(),dia:dayKey(now),hora:hora(now),items,destino:CD.motivo,perdida:true,nota:$('#cdNota').value.trim(),
+    articulos:artDe(items),costoTotal:r2(items.reduce((a,i)=>a+i.subtotal,0)),precioTotal:r2(items.reduce((a,i)=>a+i.precio*i.cant,0)),uid:S.uid,turnoId:S.turno?S.turno.id:null,cobro:null,pendiente:false};
+  try{await Store.set('salidas/'+folio,sal)}catch(err){toast('No se guardó: '+errMsg(err));CD.busy=false;$('#cdGuardar').disabled=false;return}
+  const fallos=[];for(const it of CD.items){const p=S.byId.get(it.pid);const extra={actualizado:now.getTime()};
+    if(CD.motivo==='Caducado'&&p&&p.caducidad&&diasPara(p.caducidad)<=0)extra.caducidad='';
+    try{await Store.incr('productos/'+it.pid,'stock',-it.cant,extra)}catch(e){fallos.push(it.nombre)}
+    logMov({tipo:'baja',pid:it.pid,nombre:it.nombre,cant:-it.cant,antes:it.stock,despues:r3(it.stock-it.cant),nota:`${CD.motivo} (${folio})`})}
+  if(fallos.length)toast('Registrado, pero no se descontó existencia de: '+fallos.join(', '));else toast(`Pérdida registrada: ${money(sal.costoTotal)}`);
+  CD.busy=false;CD.items=[];close('#dlgCaducados');
+  showTicket(docSalida(sal),{title:`${sal.destino}: vale de baja`,file:'baja-'+folio,nueva:false})});
+async function cdHist(){
+  $('#cdHPer').innerHTML=[[7,'7 días'],[30,'30 días'],[90,'3 meses']].map(([d,l])=>`<button type="button" class="chip" data-d="${d}" aria-pressed="${d===CD.hper}">${l}</button>`).join('');
+  $('#cdHList').innerHTML='<div class="muted">Cargando…</div>';$('#cdHTiles').innerHTML='';
+  const d=new Date();d.setDate(d.getDate()-(CD.hper-1));const ini=dayKey(d);
+  try{let q=Store.db.collection('salidas').where('dia','>=',ini);if(!can('ventas'))q=Store.db.collection('salidas').where('uid','==',S.uid);
+    const L=(await q.get()).docs.map(x=>x.data()).filter(x=>x.dia>=ini&&esPerdida(x.destino)).sort((a,b)=>b.ts-a.ts);
+    const tot=sum(L,x=>x.costoTotal);const P=new Map();for(const x of L)for(const i of x.items||[]){const o=P.get(i.pid||i.nombre)||{nombre:i.nombre,c:0,q:0,granel:!!i.granel};o.c+=+i.subtotal||0;o.q=r3(o.q+(+i.cant||0));P.set(i.pid||i.nombre,o)}
+    const top=[...P.values()].sort((a,b)=>b.c-a.c).slice(0,5);
+    $('#cdHTiles').innerHTML=`<div class="tile main"><div class="label">Pérdida a costo</div><div class="v">${money(tot)}</div></div><div class="tile"><div class="label">Registros</div><div class="v">${L.length}</div></div>`;
+    $('#cdHList').innerHTML=(top.length?`<div style="margin:6px 0 10px"><span class="label">Lo que más se pierde</span>${top.map(o=>`<div class="row spread" style="font-size:14px;padding:3px 0"><span>${esc(o.nombre)} <span class="muted">(${o.granel?fmtKg(o.q):o.q})</span></span><b class="num">${money(o.c)}</b></div>`).join('')}</div>`:'')+
+      (L.length?L.map(x=>`<div data-cdf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(fechaCorta(x.ts))}</b> · ${esc(x.destino)} · ${esc(nombreDe(x.uid))}<br><span class="muted" style="font-size:12px">${(x.items||[]).map(i=>`${qtyTxt(i)} ${esc(i.nombre)}`).join(', ')}${x.nota?' · '+esc(x.nota):''}</span></span><b class="num" style="color:var(--bad)">${money(x.costoTotal)}</b></div>`).join(''):'<div class="muted">No hay mercancía caducada registrada en este periodo.</div>');
+    CD.hl=L}catch(e){$('#cdHList').innerHTML=`<div class="muted">No se pudo leer el historial: ${esc(errMsg(e))}</div>`}}
+$('#cdHPer').onclick=e=>{const b=e.target.closest('[data-d]');if(!b)return;CD.hper=+b.dataset.d;cdHist()};
+$('#cdHList').onclick=e=>{const r=e.target.closest('[data-cdf]');if(!r)return;const x=(CD.hl||[]).find(y=>y.folio===r.dataset.cdf);if(x){close('#dlgCaducados');showTicket(docSalida(x),{title:`${x.destino}: vale de baja`,file:'baja-'+x.folio,nueva:false})}};
+
 let entSel=null;
 $('#btnEntrada').onclick=()=>{entSel=null;provOptions('#eProv','');$('#eCad').value='';$('label[for=eCant]').textContent='Cantidad que entra';$('#eCodigo').value='';$('#eResults').innerHTML='';$('#eSel').hidden=true;$('#eCant').value=1;$('#eCosto').value='';$('#eNota').value='';open('#dlgEntrada');setTimeout(()=>$('#eCodigo').focus(),60)};
 function pickEnt(p){entSel=p;$('#eSel').hidden=false;provOptions('#eProv',p.proveedorId||'');$('label[for=eCant]').textContent=p.granel?'Kilos que entran':'Cantidad que entra';
@@ -1869,11 +1954,16 @@ $('#chipSinCodigo').onclick=()=>{S.sinCodigo=!S.sinCodigo;$('#chipSinCodigo').se
 $('#chipSinPrecio').onclick=()=>{S.sinPrecio=!S.sinPrecio;$('#chipSinPrecio').setAttribute('aria-pressed',String(!!S.sinPrecio));renderInv()};
 
 /* ---------- Ventas (dueño) ---------- */
-function salTiles(){const L=S.salidasDia||[];const by={};for(const x of L){if(x.destino!==COBRA)by[x.destino]=r2((by[x.destino]||0)+(+x.costoTotal||0))}
+function salTiles(){const L=S.salidasDia||[];const by={};let perd=0;for(const x of L){if(x.destino===COBRA)continue;if(esPerdida(x.destino)){perd+=+x.costoTotal||0;continue}by[x.destino]=r2((by[x.destino]||0)+(+x.costoTotal||0))}perd=r2(perd);
   const M=L.filter(x=>x.destino===COBRA),cob=sum(M.filter(x=>x.cobro&&x.cobro.pagado),x=>x.cobro.monto),pend=sum(S.salPend||[],x=>x.cobro?x.cobro.monto:0),mc=sum(M,x=>+x.costoTotal||0);
   return (M.length?`<div class="tile" data-saldest="${COBRA}" style="cursor:pointer"><div class="label">Marleny · cobrado (aparte)</div><div class="v">${money(cob)}</div><div class="muted" style="font-size:12px">costo ${money(mc)}${M.length&&cob>mc?` · margen ${money(cob-mc)}`:''}</div></div>`:'')+
     ((S.salPend||[]).length?`<div class="tile" data-salpend style="cursor:pointer"><div class="label">Marleny te debe</div><div class="v" style="color:var(--bad)">${money(pend)}</div></div>`:'')+
+    (perd?`<div class="tile" data-salperd style="cursor:pointer"><div class="label">Pérdidas (caducado/dañado)</div><div class="v" style="color:var(--bad)">${money(perd)}</div><div class="muted" style="font-size:12px">a costo</div></div>`:'')+
     Object.entries(by).map(([d,c])=>`<div class="tile" data-saldest="${esc(d)}" style="cursor:pointer"><div class="label">Salida a ${esc(d)} (a costo)</div><div class="v">${money(c)}</div></div>`).join('')}
+document.addEventListener('click',e=>{if(!e.target.closest('[data-salperd]'))return;const L=(S.salidasDia||[]).filter(x=>esPerdida(x.destino)).sort((a,b)=>b.ts-a.ts);
+  $('#vtTitle').textContent=`Pérdidas del día: ${money(sum(L,x=>x.costoTotal))}`;
+  $('#vtBody').innerHTML=`<div class="list">${L.map(x=>`<div data-salf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(x.hora)}</b> · ${esc(x.destino)} · ${esc(nombreDe(x.uid))}<br><span class="muted" style="font-size:12px">${(x.items||[]).map(i=>`${qtyTxt(i)} ${esc(i.nombre)}`).join(', ')}</span></span><span class="num" style="color:var(--bad)">${money(x.costoTotal)}</span></div>`).join('')}</div>`;
+  $('#vtFooter').innerHTML='<button class="btn" data-close>Cerrar</button>';open('#dlgVenta')});
 const salRow=x=>`<div data-salf="${esc(x.folio)}" style="cursor:pointer"><span><b>${esc(x.dia===S.dia?x.hora:fechaCorta(x.ts))}</b> · ${x.articulos} art. · ${esc(nombreDe(x.uid))}${x.cobro?` · ${x.cobro.pagado?esc(x.cobro.metodo):'<b style="color:var(--bad)">Pendiente</b>'}`:''}${x.nota?`<br><span class="muted" style="font-size:12px">${esc(x.nota)}</span>`:''}</span><span class="num">${money(x.cobro?x.cobro.monto:x.costoTotal)}${x.pendiente&&esDuenoYo()?` <button type="button" class="btn ghost" data-salpaga="${esc(x.folio)}" style="padding:4px 10px;font-size:13px">Ya pagó</button>`:''}</span></div>`;
 document.addEventListener('click',e=>{if(!e.target.closest('[data-salpend]'))return;const L=(S.salPend||[]).slice().sort((a,b)=>b.ts-a.ts);
   $('#vtTitle').textContent=`Marleny te debe ${money(sum(L,x=>x.cobro.monto))}`;
@@ -1916,12 +2006,18 @@ function renderAnalisis(V,X){const R=S.anR;const ok=V.filter(v=>v.estado!=='canc
   const tot=sum(cur,v=>v.total),ptot=sum(prev,v=>v.total),g=ganCon(cur),pg=ganCon(prev);
   const vs=(a,b)=>{if(!(b>0))return'';const x=Math.round((a-b)/b*100);return `<div style="font-size:12px;font-weight:700;color:${x>=0?'var(--ok)':'var(--bad)'}">${x>=0?'↑':'↓'} ${Math.abs(x)}% vs periodo anterior</div>`};
   const marl=sum(X.filter(x=>x.cobro&&x.cobro.pagado),x=>x.cobro.monto);
+  const PX=X.filter(x=>esPerdida(x.destino)),perd=sum(PX,x=>x.costoTotal);
   $('#anTiles').innerHTML=`<div class="tile main"><div class="label">Vendido</div><div class="v">${money(tot)}</div>${vs(tot,ptot)}</div>
     <div class="tile"><div class="label">Ganancia</div><div class="v">${money(g.gan)}</div>${g.conCosto>0?`<div class="muted" style="font-size:12px">margen ${Math.round(g.gan/g.conCosto*100)}%</div>`:''}${vs(g.gan,pg.gan)}</div>
     <div class="tile"><div class="label">Ventas</div><div class="v">${cur.length}</div>${vs(cur.length,prev.length)}</div>
     <div class="tile"><div class="label">Ticket promedio</div><div class="v">${money(cur.length?tot/cur.length:0)}</div></div>
     <div class="tile"><div class="label">Promedio por día</div><div class="v">${money(tot/R.n)}</div></div>
-    ${marl?`<div class="tile"><div class="label">Cobrado a Marleny (aparte)</div><div class="v">${money(marl)}</div></div>`:''}`;
+    ${marl?`<div class="tile"><div class="label">Cobrado a Marleny (aparte)</div><div class="v">${money(marl)}</div></div>`:''}
+    <div class="tile"><div class="label">Pérdidas (caducado/dañado)</div><div class="v" style="color:${perd?'var(--bad)':'inherit'}">${money(perd)}</div><div class="muted" style="font-size:12px">a costo · ${PX.length} registro${PX.length===1?'':'s'}</div></div>
+    <div class="tile"><div class="label">Ganancia menos pérdidas</div><div class="v">${money(r2(g.gan-perd))}</div></div>`;
+  {const P=new Map();for(const x of PX)for(const i of x.items||[]){const o=P.get(i.pid||i.nombre)||{nombre:i.nombre,c:0,q:0,granel:!!i.granel};o.c+=+i.subtotal||0;o.q=r3(o.q+(+i.cant||0));P.set(i.pid||i.nombre,o)}
+   const T=[...P.values()].sort((a,b)=>b.c-a.c).slice(0,8);
+   $('#anPerd').innerHTML=T.length?T.map(o=>`<div class="row spread" style="padding:4px 0"><span>${esc(o.nombre)} <span class="muted">(${o.granel?fmtKg(o.q):o.q})</span></span><b class="num" style="color:var(--bad)">${money(o.c)}</b></div>`).join(''):'<p class="muted" style="margin:0">Sin mercancía caducada o dañada en este periodo.</p>'}
   const sc=$('#anSinCosto');sc.hidden=!(g.sinCosto>0);
   if(g.sinCosto>0){const top=[...g.sin].sort((a,b)=>b[1]-a[1]).slice(0,5).map(x=>esc(x[0])).join(', ');
     sc.innerHTML=`<b>${money(g.sinCosto)}</b> de lo vendido (${Math.round(g.sinCosto/(tot||1)*100)}%) son productos sin costo capturado y no cuentan en la ganancia. Captúralo en Inventario para que la ganancia sea real. Los que más se vendieron sin costo: ${top}.`}
@@ -2133,6 +2229,7 @@ $('#menuUpdate').onclick=()=>{try{CajaNative.checkUpdate()}catch(e){}};
 
 window.__nativeScan=code=>{code=String(code||'').trim();if(!code)return;
   if($('#dlgProd').open){$('#pCodigo').value=code;if(!editing&&!$('#pNombre').value.trim())autollenar(code,false);return}
+  if($('#dlgCaducados').open){const i=$('#cdCodigo');i.value=code;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return}
   if($('#dlgEntrada').open){const i=$('#eCodigo');i.value=code;i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return}
   if(!can('vender'))return;showTab('vender');$('#scanInput').value=code;handleScan(code)};
 /* Lector de pistola (teclado): funciona aunque el cursor no esté en el cuadro de escaneo, y aunque el lector no mande Enter */
