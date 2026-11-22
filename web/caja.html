@@ -291,6 +291,28 @@ dialog::backdrop{background:rgba(10,30,80,.45)}
 .daynav .btn:disabled{opacity:.35}
 #practicaBar{position:relative;z-index:5;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;padding:8px 12px;font-weight:800;color:#3b2a00;background:repeating-linear-gradient(135deg,#ffd54a 0 14px,#ffc61a 14px 28px);box-shadow:0 -2px 10px rgba(0,0,0,.18)}
 #practicaBar .btn{padding:6px 14px}
+/* venta en tarjetas con desglose */
+.vlist{display:grid;gap:10px}
+.vcard{background:var(--glass),var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;cursor:pointer;box-shadow:0 4px 14px rgba(14,42,94,.06)}
+.vcard.canc{opacity:.6}
+.vcard .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.vcard .top b.num{font-size:19px}
+.vcard .fol{font-size:12px;color:var(--muted)}
+.vcard .its{display:grid;gap:3px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);font-size:14px}
+.vcard .it{display:flex;justify-content:space-between;gap:10px}
+.vcard .it .c{color:var(--muted);font-size:12px}
+.vcard .pie{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:13px;color:var(--muted)}
+.vcard .pie b{color:var(--ok)}
+/* nieve */
+#nieve{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:45}
+body.nieve .btn:not(.ghost),body.nieve .iconbtn,body.nieve nav.tabs,body.nieve .tile.main{position:relative}
+body.nieve .btn:not(.ghost)::before,body.nieve .iconbtn::before,body.nieve nav.tabs::before{content:"";position:absolute;left:8%;right:8%;top:-5px;height:9px;pointer-events:none;z-index:2;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='10' viewBox='0 0 40 10'%3E%3Cpath d='M0 10 V5 Q3 1 7 4 Q10 0 15 3 Q19 -1 23 3 Q27 1 30 4 Q34 0 37 3 Q39 2 40 4 V10 Z' fill='%23ffffff'/%3E%3C/svg%3E") repeat-x;
+  background-size:40px 10px;filter:drop-shadow(0 1px 1px rgba(40,80,140,.25));opacity:.95;border-radius:0 0 6px 6px}
+body.nieve .iconbtn::before{left:18%;right:18%;top:-3px}
+body.nieve nav.tabs::before{left:22px;right:22px;top:-6px;height:10px}
+body.nieve .btn.primary::before{opacity:1}
+@media (prefers-reduced-motion:reduce){#nieve{display:none}}
 body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;pointer-events:none;z-index:70}
 .bars{display:flex;align-items:flex-end;gap:3px;height:150px;padding-top:6px}
 .bars .b{flex:1;min-width:6px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px}
@@ -360,6 +382,7 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
     <button id="menuNombre">Mi perfil</button>
     <button id="menuPrinter" hidden>Impresora de tickets</button>
     <button id="menuRespaldo" data-need="ajustes">Descargar respaldo completo</button>
+    <button id="menuNieve">Nieve: activada ❄️</button>
     <button id="menuPractica" hidden>Simulador (modo práctica)</button>
     <button id="menuUpdate" hidden>Buscar actualizaciones</button>
     <button id="menuLock" hidden>Bloquear / cambiar de usuario</button>
@@ -550,9 +573,11 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
       </div>
     </div>
     <div class="tiles" id="ventasTiles"></div>
-    <div class="tbl"><table>
-      <thead><tr><th>Folio</th><th>Hora</th><th>Cajero</th><th class="r">Artículos</th><th>Pago</th><th class="r">Total</th><th>Estado</th></tr></thead>
-      <tbody id="ventasBody"></tbody>
+    <div class="row" id="vVista" style="gap:6px;margin:4px 0 10px"><button type="button" class="chip" data-v="venta" aria-pressed="true">Por venta</button><button type="button" class="chip" data-v="producto" aria-pressed="false">Por producto</button></div>
+    <div class="vlist" id="ventasBody"></div>
+    <div class="tbl" id="ventasProd" hidden><table style="min-width:0">
+      <thead><tr><th>Producto</th><th class="r">Vendido</th><th class="r">Costo</th><th class="r">Ganancia</th></tr></thead>
+      <tbody id="ventasProdBody"></tbody>
     </table></div>
   </section>
 
@@ -599,6 +624,8 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
     </form>
   </section>
 </main>
+
+<canvas id="nieve" aria-hidden="true"></canvas>
 
 <!-- Dialogs -->
 <dialog id="dlgNombre"><form class="dlg" id="nombreForm">
@@ -1934,15 +1961,33 @@ function renderVentas(){
     <div class="tile"><div class="label">Transferencia</div><div class="v">${money(by('Transferencia'))}</div></div>
     <div class="tile"><div class="label">Fiado</div><div class="v">${money(by('Fiado'))}</div></div>
     <div class="tile"><div class="label">Ganancia</div><div class="v">${money(gan)}</div>${gc.sinCosto>0?`<div class="muted" style="font-size:12px">sin contar ${money(gc.sinCosto)} vendidos de productos sin costo</div>`:''}</div>${salTiles()}`;
-  $('#ventasBody').innerHTML=v.length?v.map(x=>`<tr class="click" data-f="${esc(x.folio)}"><td class="num" style="font-size:13px">${esc(x.folio)}</td><td class="num">${esc(x.hora)}</td><td>${esc(nombreDe(x.uid||x.vendedor))}</td><td class="r num">${x.articulos}</td><td>${esc(x.metodo)}${x.clienteNombre?`<div class="muted" style="font-size:12px">${esc(x.clienteNombre)}</div>`:''}</td><td class="r num"><b>${money(x.total)}</b></td><td>${x.estado==='cancelada'?'<span class="pill bad">Cancelada</span>':'<span class="pill ok">OK</span>'}</td></tr>`).join('')
-    :`<tr><td colspan="7"><div class="empty" style="border:0">No hay ventas este día.</div></td></tr>`;
+  const vc=can('costos');
+  $('#ventasBody').innerHTML=v.length?v.map(x=>{const its=x.items||[];const sinC=its.some(i=>!(+i.costo>0));const cost=r2(its.reduce((a,i)=>a+(+i.costo||0)*i.cant,0));
+    return `<div class="vcard${x.estado==='cancelada'?' canc':''}" data-f="${esc(x.folio)}">
+      <div class="top"><span><b class="num">${esc(x.hora)}</b> · ${esc(nombreDe(x.uid||x.vendedor))} · ${esc(x.metodo)}${x.clienteNombre?` (${esc(x.clienteNombre)})`:''}${x.estado==='cancelada'?' <span class="pill bad">Cancelada</span>':''}</span><b class="num">${money(x.total)}</b></div>
+      <div class="fol num">${esc(x.folio)} · ${x.articulos} artículo${x.articulos===1?'':'s'}</div>
+      <div class="its">${its.map(i=>`<div class="it"><span>${qtyTxt(i)} × ${esc(i.nombre)}${vc?`<br><span class="c">${+i.costo>0?`costo ${money(i.costo)}${i.granel?'/kg':' c/u'} · ganas ${money(r2(i.subtotal-i.costo*i.cant))}`:'sin costo capturado'}</span>`:''}</span><span class="num">${money(i.subtotal)}</span></div>`).join('')}</div>
+      ${vc&&x.estado!=='cancelada'?`<div class="pie"><span>Costo ${money(cost)}</span><span>Ganancia <b class="num">${money(ganCon([x]).gan)}</b></span></div>${sinC?`<div class="pie" style="margin-top:0"><span>* sin contar ${money(ganCon([x]).sinCosto)} de productos sin costo</span></div>`:''}`:''}
+    </div>`}).join('')
+    :`<div class="empty">No hay ventas este día.</div>`;
+  // desglose por producto
+  const P=new Map();for(const x of ok)for(const i of x.items||[]){const k=i.pid||i.nombre;const o=P.get(k)||{nombre:i.nombre,cant:0,importe:0,costo:0,cu:+i.costo||0,sinCosto:false,granel:!!i.granel};
+    o.cant=r3(o.cant+(+i.cant||0));o.importe+=+i.subtotal||0;if(+i.costo>0){o.costo+=i.costo*i.cant;o.cu=+i.costo}else o.sinCosto=true;P.set(k,o)}
+  const PL=[...P.values()].sort((a,b)=>b.importe-a.importe);
+  $('#ventasProdBody').innerHTML=PL.length?PL.map(o=>`<tr><td><b>${esc(o.nombre)}</b><div class="muted num" style="font-size:12px">${o.granel?fmtKg(o.cant):o.cant} × ${o.cu>0?`costo ${money(o.cu)}${o.granel?'/kg':' c/u'}`:'sin costo'}</div></td><td class="r num">${money(o.importe)}</td><td class="r num">${o.costo>0?money(o.costo):'—'}</td><td class="r num">${o.sinCosto&&!o.costo?'<span class="muted">—</span>':money(r2(o.importe-o.costo))}</td></tr>`).join('')
+    +`<tr><td><b>Total</b></td><td class="r num"><b>${money(sum(PL,o=>o.importe))}</b></td><td class="r num"><b>${money(sum(PL,o=>o.costo))}</b></td><td class="r num"><b>${money(sum(PL.filter(o=>o.costo>0),o=>o.importe-o.costo))}</b></td></tr>`
+    :'<tr><td colspan="4"><div class="empty" style="border:0">No hay ventas este día.</div></td></tr>';
+  $('#ventasProd th:nth-child(3)').hidden=!vc;$('#ventasProd th:nth-child(4)').hidden=!vc;
 }
-$('#ventasBody').onclick=e=>{const tr=e.target.closest('tr[data-f]');if(!tr)return;const v=S.ventasDia.find(x=>x.folio===tr.dataset.f);if(v)openVenta(v)};
+S.vVista='venta';
+$('#vVista').onclick=e=>{const b=e.target.closest('[data-v]');if(!b)return;S.vVista=b.dataset.v;$$('#vVista .chip').forEach(c=>c.setAttribute('aria-pressed',String(c.dataset.v===S.vVista)));
+  $('#ventasBody').hidden=S.vVista!=='venta';$('#ventasProd').hidden=S.vVista!=='producto'};
+$('#ventasBody').onclick=e=>{const tr=e.target.closest('[data-f]');if(!tr)return;const v=S.ventasDia.find(x=>x.folio===tr.dataset.f);if(v)openVenta(v)};
 function openVenta(v){
   $('#vtTitle').textContent=`Venta ${v.hora}`;
   $('#vtBody').innerHTML=`<div class="muted num" style="font-size:13px;margin-bottom:8px">${esc(v.folio)} · ${esc(v.metodo)}${v.clienteNombre?' · '+esc(v.clienteNombre):''} · ${esc(nombreDe(v.uid||v.vendedor))}${v.estado==='cancelada'?' · <span style="color:var(--bad)">CANCELADA</span>':''}</div>
-    <div class="list">${v.items.map(i=>`<div><span>${qtyTxt(i)} × ${esc(i.nombre)}</span><span class="num">${money(i.subtotal)}</span></div>`).join('')}
-    <div><b>Total</b><b class="num">${money(v.total)}</b></div></div>`;
+    <div class="list">${v.items.map(i=>`<div><span>${qtyTxt(i)} × ${esc(i.nombre)}${can('costos')?`<br><span class="muted" style="font-size:12px">${+i.costo>0?`costo ${money(i.costo)}${i.granel?'/kg':' c/u'} = ${money(r2(i.costo*i.cant))}`:'sin costo capturado'}</span>`:''}</span><span class="num">${money(i.subtotal)}</span></div>`).join('')}
+    <div><b>Total</b><b class="num">${money(v.total)}</b></div>${can('costos')?(()=>{const c=r2(v.items.reduce((a,i)=>a+(+i.costo||0)*i.cant,0)),inc=v.items.some(i=>!(+i.costo>0));const g=ganCon([v]);return `<div><span>Costo</span><span class="num">${money(c)}</span></div><div><b>Ganancia</b><b class="num" style="color:var(--ok)">${money(g.gan)}</b></div>${inc?`<div><span class="muted" style="font-size:13px">No cuenta ${money(g.sinCosto)} de productos sin costo</span><span></span></div>`:''}`})():''}</div>`;
   $('#vtFooter').innerHTML=`${v.estado!=='cancelada'&&can('cancelar')?'<button class="btn danger" id="btnCancelVenta">Cancelar venta</button><span style="flex:1"></span>':''}<button class="btn" id="btnReprint">Ver ticket</button>`;
   $('#btnReprint').onclick=()=>{close('#dlgVenta');showTicket(()=>drawVenta(v,null),{title:`Ticket ${v.folio}`,file:`ticket-${v.folio}`,nueva:false})};
   const cb=$('#btnCancelVenta');if(cb)cb.onclick=()=>cancelarVenta(v);
@@ -2199,6 +2244,24 @@ $('#lockGrid').onclick=async e=>{const b=e.target.closest('button[data-uid]');if
     let err='';for(;;){const pin=await askPin({title:`Hola, ${x.nombre||''}`,sub:'Escribe tu PIN',av:avSrc(x),err});if(pin==null)return;
       if(await pinHash(x.uid,pin)===h){close('#dlgPin');activar(x.uid);return}err='PIN incorrecto'}
   }finally{S.busy=false}};
+
+/* ---------- Nieve sutil ---------- */
+const Nieve=(()=>{const c=$('#nieve'),x=c.getContext('2d');let F=[],raf=0,on=false,W=0,H=0,dpr=1,last=0;
+  const mk=(y)=>({x:Math.random()*W,y:y??Math.random()*H,r:0.8+Math.random()*1.9,v:9+Math.random()*16,a:Math.random()*6.28,s:0.4+Math.random()*0.9,o:0.45+Math.random()*0.4});
+  function size(){dpr=Math.min(2,window.devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0);
+    const n=Math.round(Math.min(34,Math.max(14,W*H/26000)));while(F.length<n)F.push(mk());F.length=n}
+  function tick(t){raf=requestAnimationFrame(tick);const dt=Math.min(0.05,(t-(last||t))/1000);last=t;x.clearRect(0,0,W,H);
+    for(const f of F){f.a+=dt*f.s;f.y+=f.v*dt;f.x+=Math.sin(f.a)*0.25;if(f.y>H+4){Object.assign(f,mk(-4))}
+      x.beginPath();x.arc(f.x,f.y,f.r,0,6.283);x.fillStyle=`rgba(255,255,255,${f.o})`;x.shadowColor='rgba(60,100,170,.55)';x.shadowBlur=3;x.fill()}}
+  function start(){if(on)return;on=true;size();last=0;raf=requestAnimationFrame(tick);c.hidden=false}
+  function stop(){on=false;cancelAnimationFrame(raf);x.clearRect(0,0,W,H);c.hidden=true}
+  addEventListener('resize',()=>{if(on)size()});
+  document.addEventListener('visibilitychange',()=>{if(!activa())return;document.hidden?(cancelAnimationFrame(raf),on=false):start()});
+  const activa=()=>{try{return localStorage.getItem('nieve')!=='0'}catch(e){return true}};
+  function aplicar(){const a=activa();document.body.classList.toggle('nieve',a);$('#menuNieve').textContent=a?'Nieve: activada ❄️':'Nieve: desactivada';a?start():stop()}
+  $('#menuNieve').onclick=()=>{try{localStorage.setItem('nieve',activa()?'0':'1')}catch(e){}aplicar()};
+  return{aplicar}})();
+Nieve.aplicar();
 
 /* ---------- Simulador (modo práctica): todo en memoria, nada llega a la nube ---------- */
 function memDb(seed){const data=new Map(seed);const subs=new Set();let n=0;
