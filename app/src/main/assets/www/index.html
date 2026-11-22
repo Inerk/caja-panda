@@ -514,6 +514,11 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
 
   <!-- TURNO -->
   <section class="view" id="v-turno" hidden>
+    <div class="panel" id="dineroBox" hidden style="margin-bottom:16px">
+      <div class="row spread"><h3 style="margin:0">💰 Dinero</h3><div class="row" style="gap:6px"><button type="button" class="btn" id="btnGuadaHist">Movimientos de Guada</button><button type="button" class="btn" id="btnGuadaAjuste" hidden>Ajustar lo que tiene Guada</button></div></div>
+      <div class="tiles" id="dineroTiles" style="margin-top:10px"></div>
+      <div class="muted" id="dineroNota" style="font-size:13px"></div>
+    </div>
     <div id="turnoAbrir" class="panel" style="display:grid;gap:12px;max-width:520px">
       <h2>Abrir turno</h2>
       <p class="muted">Cuenta el efectivo con el que empiezas (fondo de caja). Todo lo que cobres quedará en este turno hasta que hagas el corte.</p>
@@ -526,6 +531,8 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
         <div class="row">
           <button class="btn" id="btnRetiro">Retiro de efectivo</button>
           <button class="btn" id="btnIngreso">Ingreso de efectivo</button>
+          <button class="btn" id="btnGuadaPide">Pedir a Guada</button>
+          <button class="btn" id="btnGuadaEntrega">Entregar a Guada</button>
           <button class="btn primary" id="btnCerrarTurno">Hacer corte</button>
         </div>
       </div>
@@ -829,6 +836,23 @@ body.practica::after{content:'';position:fixed;inset:0;border:5px solid #ffc61a;
   <footer><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Registrar</button></footer>
 </form></dialog>
 
+<dialog id="dlgGuada"><form class="dlg" id="guForm">
+  <header><h2 id="guTitle">Pedir a Guada</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <p class="muted" id="guTxt" style="margin:0"></p>
+  <div class="field"><label class="label" for="guMonto">Monto</label><input id="guMonto" class="moneyin" type="number" inputmode="decimal" min="0.5" step="0.5" required></div>
+  <div class="field"><label class="label" for="guNota">Para qué (opcional)</label><input id="guNota" maxlength="60" placeholder="Cambio, pagar al proveedor…"></div>
+  <footer><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary" id="guOk">Registrar</button></footer>
+</form></dialog>
+
+<dialog id="dlgGuadaAj"><form class="dlg" id="gaForm">
+  <header><h2>Lo que tiene Guada</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
+  <p class="muted" style="margin:0">Escribe cuánto dinero tiene Guada guardado <b>ahora mismo</b>. Úsalo para poner el saldo inicial o corregirlo si alguien le dio o le pidió dinero sin registrarlo en la app.</p>
+  <div class="kv"><span>Según la app</span><b class="num" id="gaActual"></b></div>
+  <div class="field"><label class="label" for="gaMonto">Tiene en realidad</label><input id="gaMonto" class="moneyin" type="number" inputmode="decimal" min="0" step="0.5" required></div>
+  <div class="field"><label class="label" for="gaNota">Nota (opcional)</label><input id="gaNota" maxlength="60" placeholder="Saldo inicial, conteo…"></div>
+  <footer><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary">Guardar</button></footer>
+</form></dialog>
+
 <dialog id="dlgCorte"><form class="dlg" id="corteForm">
   <header><h2>Corte de caja</h2><button type="button" class="btn ghost" data-close aria-label="Cerrar">✕</button></header>
   <div class="list" id="corteResumen"></div>
@@ -962,10 +986,10 @@ const artDe = items => items.reduce((a,i)=>a+(i.granel?1:i.cant),0);
 const PRACTICA = (()=>{try{return sessionStorage.getItem('pos-practica')==='1'}catch(e){return false}})();
 
 const ROLES = {
-  dueno:{label:'Dueño',p:['vender','fiado','turno','inventario','inv_editar','costos','ventas','cancelar','ajustes']},
+  dueno:{label:'Dueño',p:['vender','fiado','turno','inventario','inv_editar','costos','ventas','cancelar','ajustes','guada_ver']},
   cajero:{label:'Cajero',p:['vender','fiado','turno','inventario']},
   almacen:{label:'Inventario',p:['inventario','inv_editar','costos']},
-  encargado:{label:'Encargada',p:['vender','fiado','turno','inventario','inv_editar','inv_borrar','costos']},
+  encargado:{label:'Encargada',p:['vender','fiado','turno','inventario','inv_editar','inv_borrar','costos','guada_ver']},
   pendiente:{label:'Pendiente',p:[]}
 };
 
@@ -1596,21 +1620,21 @@ $('#abonoForm').addEventListener('submit',async e=>{e.preventDefault();if(S.busy
   catch(ex){err(errMsg(ex))}finally{S.busy=false;$('#btnAbonoOk').disabled=false}});
 
 /* ---------- Turnos y corte ---------- */
-function resumenTurno(t){
-  const ventas=S.turnoVentas.filter(v=>v.estado!=='cancelada');
+function resumenTurno(t,VV,XX){
+  const ventas=(VV||S.turnoVentas).filter(v=>v.estado!=='cancelada');
   const by=m=>sum(ventas.filter(v=>v.metodo===m),v=>v.total);
   const abonos=S.cmovs.filter(x=>x.turnoId===t.id&&x.tipo==='abono'&&x.metodo!=='Cancelación');
   const movs=t.movs||[];
   const r={nVentas:ventas.length,efectivo:by('Efectivo'),tarjeta:by('Tarjeta'),transferencia:by('Transferencia'),fiado:by('Fiado'),
     abonosEf:sum(abonos.filter(a=>a.metodo==='Efectivo'),a=>a.monto),abonosOtros:sum(abonos.filter(a=>a.metodo!=='Efectivo'),a=>a.monto),
     retiros:sum(movs.filter(m=>m.tipo==='retiro'),m=>m.monto),ingresos:sum(movs.filter(m=>m.tipo==='ingreso'),m=>m.monto)};
-  const sc=(S.turnoSalidas||[]).filter(x=>x.cobro&&x.cobro.pagado&&x.turnoId===t.id);
+  const sc=(XX||S.turnoSalidas||[]).filter(x=>x.cobro&&x.cobro.pagado&&x.turnoId===t.id);
   r.marlenyEf=sum(sc.filter(x=>x.cobro.metodo==='Efectivo'),x=>x.cobro.monto);r.marlenyOtros=sum(sc.filter(x=>x.cobro.metodo!=='Efectivo'),x=>x.cobro.monto);
   r.vendido=r2(r.efectivo+r.tarjeta+r.transferencia+r.fiado);
   r.esperado=r2((+t.fondo||0)+r.efectivo+r.abonosEf+r.marlenyEf+r.ingresos-r.retiros);
   return r}
 function renderTurno(){
-  const t=S.turno;
+  const t=S.turno;renderDinero();
   $('#turnoAbrir').hidden=!!t;$('#turnoActivo').hidden=!t;
   if(S.me) applyWho();
   renderCart();
@@ -1657,6 +1681,54 @@ $('#btnAbrirTurno').onclick=async()=>{
   S.busy=true;const id=`t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;
   try{await Store.set('turnos/'+id,{uid:S.uid,abierto:Date.now(),fondo,estado:'abierto',movs:[]});$('#fondo').value='';toast('Turno abierto');setTimeout(()=>showTab('vender'),300)}
   catch(ex){toast(errMsg(ex))}finally{S.busy=false}};
+/* ---------- Guada: dinero guardado fuera de la caja ---------- */
+const GUADA='Guada';
+S.guada=[];S.abiertos=new Map();
+const guadaSaldo=()=>r2(S.guada.reduce((a,m)=>a+(m.tipo==='entrega'?+m.monto:m.tipo==='pide'?-m.monto:+m.monto||0),0));
+function openGuada(tipo){if(!S.turno)return toast('Abre tu turno primero');S.guTipo=tipo;
+  $('#guTitle').textContent=tipo==='pide'?`Pedir dinero a ${GUADA}`:`Entregar dinero a ${GUADA}`;
+  $('#guTxt').textContent=tipo==='pide'?`El dinero que te da ${GUADA} entra a la caja de tu turno.`:`El dinero que le das a ${GUADA} sale de la caja de tu turno.`;
+  $('#guOk').textContent=tipo==='pide'?'Registrar lo que me dio':'Registrar lo que le di';$('#guMonto').value='';$('#guNota').value='';open('#dlgGuada');setTimeout(()=>$('#guMonto').focus(),60)}
+$('#btnGuadaPide').onclick=()=>openGuada('pide');$('#btnGuadaEntrega').onclick=()=>openGuada('entrega');
+$('#guForm').addEventListener('submit',async e=>{e.preventDefault();if(!S.turno)return;const monto=r2($('#guMonto').value),nota=$('#guNota').value.trim();if(!(monto>0))return;
+  const tipo=S.guTipo;
+  if(tipo==='entrega'&&monto>resumenTurno(S.turno).esperado+0.009){toast('No hay tanto efectivo en caja');return}
+  if(tipo==='pide'&&can('guada_ver')&&S.guada.length&&monto>guadaSaldo()+0.009&&!await confirmBox('Más de lo que tiene',`Según la app ${GUADA} tiene ${money(guadaSaldo())}. ¿Registrar de todos modos?`,'Registrar'))return;
+  $('#guOk').disabled=true;const now=new Date();
+  const movs=[...(S.turno.movs||[]),{tipo:tipo==='pide'?'ingreso':'retiro',monto,nota:(tipo==='pide'?`Pedido a ${GUADA}`:`Entregado a ${GUADA}`)+(nota?': '+nota:''),ts:now.getTime(),guada:tipo}];
+  try{await Store.update('turnos/'+S.turno.id,{movs});
+    await Store.set('guada/'+Store.newId('guada'),{tipo,monto,nota,ts:now.getTime(),dia:dayKey(now),hora:hora(now),uid:S.uid,turnoId:S.turno.id});
+    close('#dlgGuada');toast(tipo==='pide'?`Registrado: ${GUADA} te dio ${money(monto)}`:`Registrado: le diste ${money(monto)} a ${GUADA}`)}
+  catch(ex){toast(errMsg(ex))}finally{$('#guOk').disabled=false}});
+$('#btnGuadaAjuste').onclick=()=>{$('#gaActual').textContent=money(guadaSaldo());$('#gaMonto').value='';$('#gaNota').value='';open('#dlgGuadaAj');setTimeout(()=>$('#gaMonto').focus(),60)};
+$('#gaForm').addEventListener('submit',async e=>{e.preventDefault();const real=r2($('#gaMonto').value);if(isNaN(real)||real<0)return;const d=r2(real-guadaSaldo());
+  if(!d){close('#dlgGuadaAj');toast('Ya coincide');return}const now=new Date();
+  try{await Store.set('guada/'+Store.newId('guada'),{tipo:'ajuste',monto:d,nota:$('#gaNota').value.trim()||'Ajuste de saldo',ts:now.getTime(),dia:dayKey(now),hora:hora(now),uid:S.uid,turnoId:null});close('#dlgGuadaAj');toast(`${GUADA} tiene ${money(real)}`)}
+  catch(ex){toast(errMsg(ex))}});
+$('#btnGuadaHist').onclick=()=>{const L=S.guada.slice().sort((a,b)=>a.ts-b.ts);let sal=0;const rows=L.map(m=>{sal=r2(sal+(m.tipo==='entrega'?+m.monto:m.tipo==='pide'?-m.monto:+m.monto));return{m,sal}}).reverse().slice(0,80);
+  $('#vtTitle').textContent=`${GUADA} tiene ${money(guadaSaldo())}`;
+  $('#vtBody').innerHTML=rows.length?`<div class="list">${rows.map(({m,sal})=>`<div><span><b>${m.tipo==='pide'?'Le pidieron':m.tipo==='entrega'?'Le entregaron':'Ajuste'}</b> · ${esc(nombreDe(m.uid))}<br><span class="muted" style="font-size:12px">${esc(fechaCorta(m.ts))}${m.nota?' · '+esc(m.nota):''}</span></span><span class="num" style="text-align:right"><b style="color:${m.tipo==='pide'||(m.tipo==='ajuste'&&m.monto<0)?'var(--bad)':'var(--ok)'}">${m.tipo==='pide'?'−':m.tipo==='entrega'?'+':m.monto>=0?'+':'−'}${money(Math.abs(m.monto))}</b><br><span class="muted" style="font-size:12px">queda ${money(sal)}</span></span></div>`).join('')}</div>`:'<div class="empty">Todavía no hay movimientos.</div>';
+  $('#vtFooter').innerHTML='<button class="btn" data-close>Cerrar</button>';open('#dlgVenta')};
+function renderDinero(){const box=$('#dineroBox');if(!can('guada_ver')){box.hidden=true;return}box.hidden=false;$('#btnGuadaAjuste').hidden=!can('ventas');
+  const g=guadaSaldo();let caja=0,n=0,det=[];
+  if(can('ventas')){for(const [id,o] of S.abiertos){if(!o.t)continue;const e=resumenTurno(o.t,o.v||[],o.x||[]).esperado;caja+=e;n++;det.push(`${nombreDe(o.t.uid)} ${money(e)}`)}}
+  else if(S.turno){caja=resumenTurno(S.turno).esperado;n=1}
+  caja=r2(caja);
+  const hoy=dayKey(new Date()),gh=S.guada.filter(m=>m.dia===hoy),pid=sum(gh.filter(m=>m.tipo==='pide'),m=>m.monto),ent=sum(gh.filter(m=>m.tipo==='entrega'),m=>m.monto);
+  $('#dineroTiles').innerHTML=`<div class="tile main"><div class="label">Dinero total de la tienda</div><div class="v">${money(r2(caja+g))}</div></div>
+    <div class="tile"><div class="label">En caja ahora</div><div class="v">${money(caja)}</div><div class="muted" style="font-size:12px">${n?(det.length?det.join(' · '):'tu turno'):'no hay turno abierto'}</div></div>
+    <div class="tile"><div class="label">Guardado con ${GUADA}</div><div class="v">${money(g)}</div></div>
+    <div class="tile"><div class="label">Hoy le pidieron</div><div class="v" style="color:${pid?'var(--bad)':'inherit'}">${money(pid)}</div></div>
+    <div class="tile"><div class="label">Hoy le entregaron</div><div class="v" style="color:${ent?'var(--ok)':'inherit'}">${money(ent)}</div></div>`;
+  $('#dineroNota').textContent=S.guada.length?'':`Toca "Ajustar lo que tiene ${GUADA}" para poner cuánto dinero tiene guardado hoy.`}
+function subAbiertos(){Store.watch('turnos',{where:[['estado','==','abierto']]},l=>{const ids=new Set(l.map(t=>t.id));
+  for(const [id,o] of S.abiertos)if(!ids.has(id)){o.u1&&o.u1();o.u2&&o.u2();S.abiertos.delete(id)}
+  for(const t of l){let o=S.abiertos.get(t.id);if(!o){o={};S.abiertos.set(t.id,o);
+      o.u1=Store.watch('ventas',{where:[['turnoId','==',t.id]]},v=>{o.v=v;renderDinero()});
+      o.u2=Store.watch('salidas',{where:[['turnoId','==',t.id]]},x=>{o.x=x;renderDinero()},()=>{})}
+    o.t=t}
+  renderDinero()},()=>{})}
+
 $('#btnRetiro').onclick=()=>openEf('retiro');$('#btnIngreso').onclick=()=>openEf('ingreso');
 function openEf(tipo){S.efTipo=tipo;$('#efTitle').textContent=tipo==='retiro'?'Retiro de efectivo':'Ingreso de efectivo';$('#efMonto').value='';$('#efNota').value='';
   $('#efNota').placeholder=tipo==='retiro'?'Pago a proveedor, depósito, gasto…':'Cambio extra, préstamo…';open('#dlgEfectivo');setTimeout(()=>$('#efMonto').focus(),60)}
@@ -1666,7 +1738,7 @@ $('#efForm').addEventListener('submit',async e=>{e.preventDefault();if(!S.turno)
   const movs=[...(S.turno.movs||[]),{tipo:S.efTipo,monto,nota,ts:Date.now()}];
   try{await Store.update('turnos/'+S.turno.id,{movs});close('#dlgEfectivo');toast(S.efTipo==='retiro'?'Retiro registrado':'Ingreso registrado')}catch(ex){toast(errMsg(ex))}});
 $('#btnCerrarTurno').onclick=()=>{if(!S.turno)return;const t=S.turno,r=resumenTurno(t);
-  $('#corteResumen').innerHTML=[['Fondo inicial',t.fondo],['+ Ventas en efectivo',r.efectivo],['+ Abonos en efectivo',r.abonosEf],['+ Ingresos',r.ingresos],['− Retiros',r.retiros]].map(([a,b])=>`<div><span>${a}</span><span class="num">${money(b)}</span></div>`).join('')+
+  $('#corteResumen').innerHTML=[['Fondo inicial',t.fondo],['+ Ventas en efectivo',r.efectivo],['+ Abonos en efectivo',r.abonosEf],...(r.marlenyEf?[['+ Cobro Marleny efectivo',r.marlenyEf]]:[]),['+ Ingresos',r.ingresos],['− Retiros',r.retiros]].map(([a,b])=>`<div><span>${a}</span><span class="num">${money(b)}</span></div>`).join('')+
     `<div><b>Debe haber</b><b class="num">${money(r.esperado)}</b></div>`;
   $('#contado').value='';$('#corteDif').textContent='—';$('#corteDif').style.color='inherit';open('#dlgCorte');setTimeout(()=>$('#contado').focus(),60)};
 $('#contado').oninput=()=>{const r=resumenTurno(S.turno),c=parseFloat($('#contado').value);if(isNaN(c)){$('#corteDif').textContent='—';return}
@@ -2173,6 +2245,8 @@ function startData(){
     renderTurno()});
   if(can('turno'))Store.watch('turnos',{where:can('ventas')?[['estado','==','cerrado']]:[['uid','==',S.uid],['estado','==','cerrado']]},l=>{S.turnos=can('ventas')?l:l.filter(t=>t.uid===S.uid);renderTurnos()});
   if(can('ventas'))subVentasDia();
+  if(can('guada_ver'))Store.watch('guada',{},l=>{S.guada=l;renderDinero()},()=>{});
+  if(can('ventas'))subAbiertos();
 }
 
 async function boot(){

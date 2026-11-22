@@ -65,6 +65,12 @@ service cloud.firestore {
       allow create: if esAlmacen() && soyYo('uid');
     }
 
+    // Dinero guardado con Guada (fuera de la caja)
+    match /guada/{id} {
+      allow read: if esDueno() || rol() == 'encargado' || (activo() && resource.data.uid == request.auth.uid);
+      allow create: if activo() && soyYo('uid') && (request.resource.data.tipo != 'ajuste' || esDueno());
+    }
+
     match /movimientos/{id} {
       allow read: if activo();
       allow create: if activo();
